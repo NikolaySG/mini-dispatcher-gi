@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { createTaskMailto, downloadTasksCsv } from "./services/task-exchange";
 
 type Status = "Выполнено" | "В работе" | "Просрочено" | "На проверке" | "Требует уточнения";
 type Priority = "Критический" | "Высокий" | "Средний" | "Низкий";
@@ -103,16 +104,6 @@ const statusColors: Record<Status, string> = {
 };
 const formatDate = (date: string) => new Intl.DateTimeFormat("ru-RU").format(new Date(`${date}T12:00:00`));
 
-function downloadCsv(rows: Task[], suffix: string) {
-  const headers = ["ID", "Поручение", "Ответственный", "Статус", "Приоритет", "Срок", "Объект"];
-  const csvRows = rows.map((task) => [task.id, task.title, task.owner, task.status, task.priority, formatDate(task.due), task.project]);
-  const escape = (value: string) => `"${value.replaceAll('"', '""')}"`;
-  const content = "\uFEFF" + [headers, ...csvRows].map((row) => row.map(escape).join(";")).join("\n");
-  const url = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" }));
-  const link = document.createElement("a");
-  link.href = url; link.download = `porucheniya-${suffix}.csv`; link.click(); URL.revokeObjectURL(url);
-}
-
 export default function Home() {
   const [owner, setOwner] = useState("Все");
   const [status, setStatus] = useState("Все");
@@ -135,7 +126,7 @@ export default function Home() {
   const total = tasks.length;
   const completed = tasks.filter((task) => task.status === "Выполнено").length;
   const overdue = tasks.filter((task) => task.status === "Просрочено").length;
-  const mailto = `mailto:${selected.ownerEmail}?subject=${encodeURIComponent(`[${selected.id}] ${selected.title} — запрос статуса`)}&body=${encodeURIComponent(`Добрый день!\n\nПросьба предоставить актуальный статус по поручению ${selected.id} «${selected.title}».\n\nСрок: ${formatDate(selected.due)}.\nТекущий статус: ${selected.status}.\n\nС уважением,\nГлавный инженер`)}`;
+  const mailto = createTaskMailto(selected);
   const metrics = [
     ["Всего", total, "neutral"], ["Выполнено", completed, "green"],
     ["В работе", tasks.filter((task) => task.status === "В работе").length, "blue"],
@@ -160,7 +151,7 @@ export default function Home() {
         <section className="control-panel">
           <div className="section-heading">
             <div><p className="eyebrow">ОПЕРАТИВНЫЙ РЕЕСТР</p><h2>Поручения</h2></div>
-            <div className="actions"><button className="button secondary" onClick={() => downloadCsv(tasks, "vse")}>⇩ CSV: все</button><button className="button primary" onClick={() => downloadCsv(filtered, "filtr")}>⇩ CSV: по фильтру</button></div>
+            <div className="actions"><button className="button secondary" onClick={() => downloadTasksCsv(tasks, "vse")}>⇩ CSV: все</button><button className="button primary" onClick={() => downloadTasksCsv(filtered, "filtr")}>⇩ CSV: по фильтру</button></div>
           </div>
           <div className="filters">
             <label className="search-field"><span>Поиск</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ID или текст поручения" /></label>
