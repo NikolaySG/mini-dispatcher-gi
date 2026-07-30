@@ -177,13 +177,17 @@ export default function Home() {
   return (
     <main className="app-shell">
       <div className="ambient ambient-a" /><div className="ambient ambient-b" />
+      <div className="hud-frame" aria-hidden="true"><i /><i /><i /><i /></div>
+      <div className="hud-side-rail" aria-hidden="true">
+        <span>GI / AI</span><b>01</b><i /><b>02</b><i /><b>03</b><i /><em>SYSTEM ONLINE</em>
+      </div>
       <header className="command-header">
         <div className="brand">
           <div className="brand-orbit"><span>ГИ</span></div>
-          <div><p className="kicker">ИНЖЕНЕРНЫЙ КОМАНДНЫЙ КОНТУР</p><h1>Диспетчерская</h1></div>
+          <div><p className="kicker">ИНТЕЛЛЕКТУАЛЬНЫЙ КОМАНДНЫЙ КОНТУР</p><h1>Диспетчерская <em>// AI</em></h1></div>
         </div>
         <div className="header-center">
-          <span className="live-pulse" /><span>СИСТЕМА АКТИВНА</span>
+          <span className="live-pulse" /><span>ASSISTANT CORE ONLINE</span>
           <b>{activeTasks.length}</b><small>ПОРУЧЕНИЙ В КОНТУРЕ</small>
         </div>
         <div className="header-actions">
@@ -194,19 +198,25 @@ export default function Home() {
 
       <section className="hero-grid">
         <div className="hero-copy">
-          <p className="signal-label">ОПЕРАТИВНАЯ КАРТИНА · 30.07.2026</p>
-          <h2>Каждое поручение.<br /><em>Под контролем.</em></h2>
-          <p>Сроки, люди, риски и решения в одном живом контуре. Теперь тут можно не только смотреть, как всё горит.</p>
+          <p className="signal-label">ДОБРЫЙ ВЕЧЕР, НИКОЛАЙ · ОПЕРАТИВНАЯ КАРТИНА ГОТОВА</p>
+          <h2>Инженерный<br /><em>интеллект.</em></h2>
+          <p>Я свёл сроки, людей, риски и решения в единый контур. Критические сигналы выделены. Рутинная паника отфильтрована.</p>
+          <div className="assistant-brief">
+            <span className="assistant-wave"><i /><i /><i /><i /><i /><i /><i /></span>
+            <div><small>СИСТЕМНЫЙ БРИФИНГ</small><strong>{statusCounts.find((item) => item.label === "Просрочено")?.value ?? 0} просрочено · {statusCounts.find((item) => item.label === "На проверке")?.value ?? 0} на проверке · {completion}% исполнено</strong></div>
+            <b>LIVE</b>
+          </div>
         </div>
         <div className="completion-core">
           <div className="core-ring" style={{ "--progress": `${completion * 3.6}deg` } as React.CSSProperties}>
+            <span className="core-orbit orbit-one" /><span className="core-orbit orbit-two" /><i className="core-node node-a" /><i className="core-node node-b" />
             <div><strong>{completion}<sup>%</sup></strong><span>исполнено</span></div>
           </div>
-          <div className="core-caption"><i /><span>Эффективность контура</span><b>{completion >= 70 ? "НОРМА" : completion >= 40 ? "ВНИМАНИЕ" : "РИСК"}</b></div>
+          <div className="core-caption"><i /><span>Реактор исполнения</span><b>{completion >= 70 ? "STABLE" : completion >= 40 ? "MONITOR" : "ALERT"}</b></div>
         </div>
         <div className="risk-radar">
           <div className="radar-grid"><span className="radar-sweep" /><i className="blip b1" /><i className="blip b2" /><i className="blip b3" /></div>
-          <div><span>РАДАР РИСКОВ</span><strong>{statusCounts.find((item) => item.label === "Просрочено")?.value ?? 0}</strong><small>просрочено</small></div>
+          <div><span>TACTICAL RISK SCAN</span><strong>{statusCounts.find((item) => item.label === "Просрочено")?.value ?? 0}</strong><small>просрочено</small></div>
         </div>
       </section>
 
