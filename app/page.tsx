@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { CommandCore } from "./components/command-core";
 import { DeadlineIndicator, getDeadlineState } from "./components/deadline-indicator";
+import { OperationsPanels } from "./components/operations-panels";
 import { createTaskMailto, downloadTasksCsv } from "./services/task-exchange";
 
 type Status = "Выполнено" | "В работе" | "Просрочено" | "На проверке" | "Требует уточнения" | "Снято";
@@ -343,6 +344,8 @@ export default function Home() {
           <div className="bar-chart">{ownerCounts.map((item, index) => <div className="bar-row" key={item.label}><span>0{index + 1}</span><b>{item.label}</b><div><i style={{ width: `${item.value / maxOwner * 100}%` }} /></div><strong>{item.value}</strong></div>)}</div>
         </article>
       </section>
+
+      <OperationsPanels tasks={activeTasks} onSelect={setSelectedId} />
 
       <footer><span>MINI DISPATCHER / GI</span><span>Данные хранятся в защищённой базе · изменения сохраняются автоматически</span></footer>
       {toast && <div className="toast"><i />{toast}</div>}
