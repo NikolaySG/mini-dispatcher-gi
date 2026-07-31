@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { CommandCore } from "./components/command-core";
+import { DeadlineIndicator, getDeadlineState } from "./components/deadline-indicator";
 import { createTaskMailto, downloadTasksCsv } from "./services/task-exchange";
 
 type Status = "Выполнено" | "В работе" | "Просрочено" | "На проверке" | "Требует уточнения" | "Снято";
@@ -283,13 +284,13 @@ export default function Home() {
 
         <div className="registry-grid">
           <div className="task-list">
-            <div className="task-list-head"><span>ПОРУЧЕНИЕ</span><span>ОТВЕТСТВЕННЫЙ</span><span>СРОК</span><span>СТАТУС</span></div>
+            <div className="task-list-head"><span>ПОРУЧЕНИЕ</span><span>ОТВЕТСТВЕННЫЙ</span><span>СРОК / СОСТОЯНИЕ</span><span>СТАТУС</span></div>
             {loading && <div className="loading-state"><i /><span>Поднимаем оперативную картину…</span></div>}
             {!loading && filtered.map((task) => (
-              <button className={`task-row ${selected?.id === task.id ? "selected" : ""}`} key={task.id} onClick={() => setSelectedId(task.id)}>
+              <button className={`task-row deadline-${getDeadlineState(task.due, task.status, runtimeNow)} ${task.priority === "Критический" && task.status !== "Выполнено" ? "critical-row" : ""} ${selected?.id === task.id ? "selected" : ""}`} key={task.id} onClick={() => setSelectedId(task.id)}>
                 <span className="task-main"><small>{task.id} · {task.project}</small><strong>{task.title}</strong><em className={`priority-dot ${task.priority.toLowerCase()}`}>{task.priority}</em></span>
                 <span className="owner-cell"><i>{task.owner.slice(-1)}</i><b>{task.owner}</b></span>
-                <span className={`due-cell ${task.status === "Просрочено" ? "late" : ""}`}><strong>{formatDate(task.due)}</strong><small>{daysLabel(task.due)}</small></span>
+                <DeadlineIndicator due={task.due} status={task.status} now={runtimeNow} />
                 <span><StatusBadge status={task.status} /></span>
               </button>
             ))}
@@ -382,14 +383,6 @@ function Filter({ label, value, options, onChange }: { label: string; value: str
 
 function StatusBadge({ status }: { status: Status }) {
   return <span className={`status-badge ${statusClass[status]}`}><i />{status}</span>;
-}
-
-function daysLabel(date: string) {
-  if (!date) return "назначить дату";
-  const diff = Math.ceil((new Date(`${date}T23:59:59`).getTime() - runtimeNow) / 86400000);
-  if (diff < 0) return `${Math.abs(diff)} дн. просрочки`;
-  if (diff === 0) return "сегодня";
-  return `${diff} дн. осталось`;
 }
 
 function executorSurnames(owner: string) {

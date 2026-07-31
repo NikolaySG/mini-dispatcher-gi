@@ -10,6 +10,7 @@
   --accent: #6eeaff;
   --success: #37e6a1;
   --warning: #ffc857;
+  --warning-strong: #ff914d;
   --critical: #ff5263;
   --glow: 0 0 24px rgba(110, 234, 255, .14);
   --radius: 2px;
@@ -245,16 +246,21 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .clear-filters { border: 0; color: #75869a; background: transparent; cursor: pointer; font-size: 9px; text-decoration: underline; }
 .registry-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(350px,.68fr); min-height: 550px; }
 .task-list { border-right: 1px solid var(--line); min-width: 0; }
-.task-list-head { display: grid; grid-template-columns: 1.7fr .72fr .55fr .65fr; padding: 11px 16px; color: #536377; font-size: 8px; letter-spacing: .12em; border-bottom: 1px solid var(--line); }
+.task-list-head { position: sticky; top: 0; z-index: 4; display: grid; grid-template-columns: 1.7fr .72fr .55fr .65fr; padding: 11px 16px; color: #6d7f92; font-size: 8px; letter-spacing: .12em; border-bottom: 1px solid var(--line); background: rgba(7,18,29,.96); backdrop-filter: blur(14px); }
 .task-row { width: 100%; min-height: 76px; padding: 11px 16px; border: 0; border-bottom: 1px solid rgba(133,170,202,.09); background: transparent; color: #cbd6df; display: grid; grid-template-columns: 1.7fr .72fr .55fr .65fr; align-items: center; text-align: left; cursor: pointer; position: relative; }
 .task-row::after { content: ""; position: absolute; right: 0; top: 50%; width: 0; height: 1px; background: var(--cyan); transition: width .2s; }
 .task-row:hover { background: rgba(60,200,255,.025); }.task-row:hover::after { width: 24px; }
 .task-row.selected { background: linear-gradient(90deg, rgba(60,200,255,.1), rgba(60,200,255,.015)); box-shadow: inset 2px 0 0 var(--cyan); }
+.task-row.critical-row:not(.selected) { box-shadow: inset 2px 0 0 rgba(255,82,99,.58); background: linear-gradient(90deg, rgba(255,82,99,.035), transparent 22%); }
+.task-row.deadline-overdue:hover { background: linear-gradient(90deg, rgba(255,82,99,.055), rgba(60,200,255,.018)); }
 .task-main { display: block; min-width: 0; }.task-main small { display: block; color: #52677d; font: 8px var(--font-geist-mono), monospace; }.task-main strong { display: block; margin: 6px 0 5px; font-size: 15px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .priority-dot { display: inline-flex; align-items: center; gap: 5px; color: #68798b; font-size: 8px; font-style: normal; text-transform: uppercase; }.priority-dot::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 .priority-dot.критический { color: var(--red); }.priority-dot.высокий { color: var(--amber); }.priority-dot.средний { color: var(--cyan); }.priority-dot.низкий { color: #748297; }
 .owner-cell { display: flex; align-items: center; gap: 8px; font-size: 9px; }.owner-cell i { width: 25px; height: 25px; display: grid; place-items: center; border-radius: 50%; background: #152a3d; color: var(--cyan); font-style: normal; border: 1px solid rgba(60,200,255,.22); }
-.due-cell strong { display: block; font-size: 10px; }.due-cell small { display: block; margin-top: 4px; color: #5c6c80; font-size: 8px; }.due-cell.late strong, .due-cell.late small { color: var(--red); }
+.deadline-cell { display: block; width: min(120px, 100%); color: #98a7b6; }.deadline-date { display: flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 700; }.deadline-date > i { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: #718096; }.deadline-cell small { display: block; margin: 4px 0 6px 12px; color: #66778a; font-size: 8px; }.deadline-track { display: block; height: 2px; margin-left: 12px; background: rgba(116,150,180,.1); overflow: hidden; }.deadline-track > i { display: block; height: 100%; background: currentColor; }
+.deadline-cell.safe { color: var(--success); }.deadline-cell.near { color: var(--warning); }.deadline-cell.urgent { color: var(--warning-strong); }.deadline-cell.overdue { color: var(--critical); }.deadline-cell.done { color: var(--success); }.deadline-cell.none { color: #718096; }
+.deadline-cell.safe small, .deadline-cell.near small, .deadline-cell.urgent small, .deadline-cell.overdue small, .deadline-cell.done small { color: currentColor; opacity: .72; }
+.deadline-cell.safe .deadline-date > i, .deadline-cell.near .deadline-date > i, .deadline-cell.urgent .deadline-date > i, .deadline-cell.overdue .deadline-date > i, .deadline-cell.done .deadline-date > i { background: currentColor; box-shadow: 0 0 7px currentColor; }
 .status-badge { display: inline-flex; align-items: center; gap: 6px; color: #9daabd; font-size: 8px; font-weight: 800; letter-spacing: .03em; white-space: nowrap; }.status-badge i { width: 6px; height: 6px; background: currentColor; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
 .status-badge.done { color: var(--green); }.status-badge.active { color: var(--cyan); }.status-badge.overdue { color: var(--red); }.status-badge.review { color: var(--amber); }.status-badge.clarify { color: var(--purple); }.status-badge.removed { color: #718096; }
 .loading-state, .empty-state { height: 250px; display: grid; place-content: center; justify-items: center; gap: 14px; color: #627287; font-size: 10px; }
