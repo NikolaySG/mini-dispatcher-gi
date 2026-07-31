@@ -81,9 +81,14 @@ export default function Home() {
   const statusCounts = statuses.map((label) => ({
     label, value: tasks.filter((task) => task.status === label).length,
   }));
-  const ownerCounts = owners.map((label) => ({
-    label, value: activeTasks.filter((task) => task.owner === label).length,
-  }));
+  const ownerCounts = [...activeTasks.reduce((counts, task) => {
+    for (const surname of executorSurnames(task.owner)) {
+      counts.set(surname, (counts.get(surname) ?? 0) + 1);
+    }
+    return counts;
+  }, new Map<string, number>())]
+    .map(([label, value]) => ({ label, value }))
+    .sort((left, right) => right.value - left.value || left.label.localeCompare(right.label, "ru"));
   const maxOwner = Math.max(1, ...ownerCounts.map((item) => item.value));
   const completion = activeTasks.length
     ? Math.round(activeTasks.filter((task) => task.status === "Выполнено").length / activeTasks.length * 100)
@@ -209,8 +214,6 @@ export default function Home() {
       <section className="hero-grid">
         <div className="hero-copy">
           <p className="signal-label">ДОБРЫЙ ВЕЧЕР, НИКОЛАЙ · ОПЕРАТИВНАЯ КАРТИНА ГОТОВА</p>
-          <h2>Инженерный<br /><em>интеллект.</em></h2>
-          <p>Я свёл сроки, людей, риски и решения в единый контур. Критические сигналы выделены. Рутинная паника отфильтрована.</p>
           <div className="assistant-brief">
             <span className="assistant-wave"><i /><i /><i /><i /><i /><i /><i /></span>
             <div><small>СИСТЕМНЫЙ БРИФИНГ</small><strong>{statusCounts.find((item) => item.label === "Просрочено")?.value ?? 0} просрочено · {statusCounts.find((item) => item.label === "На проверке")?.value ?? 0} на проверке · {completion}% исполнено</strong></div>
@@ -279,6 +282,7 @@ export default function Home() {
                 <button className="action primary-action" onClick={openEdit}>✎ Изменить</button>
                 <button className="action success-action" disabled={busy || selected.status === "Выполнено"} onClick={() => quickStatus("Выполнено")}>✓ Выполнено</button>
                 <button className="action remove-action" disabled={busy || selected.status === "Снято"} onClick={() => quickStatus("Снято")}>⊘ Снять</button>
+                <button className="action delete-action" disabled={busy} onClick={deleteTask}>⌫ Удалить</button>
               </div>
               <div className="detail-matrix">
                 <div><span>Ответственный</span><strong>{selected.owner}</strong></div>
@@ -295,7 +299,6 @@ export default function Home() {
                   <div className="history-event" key={`${event.date}-${index}`}><i className={index === 0 ? "current" : ""} /><div><time>{event.date}</time><strong>{event.title}</strong><p>{event.text}</p></div></div>
                 ))}
               </div>
-              <button className="delete-link" onClick={deleteTask} disabled={busy}>Удалить поручение навсегда</button>
             </> : <div className="empty-inspector">Выберите поручение</div>}
           </aside>
         </div>
@@ -362,6 +365,15 @@ function daysLabel(date: string) {
   if (diff < 0) return `${Math.abs(diff)} дн. просрочки`;
   if (diff === 0) return "сегодня";
   return `${diff} дн. осталось`;
+}
+
+function executorSurnames(owner: string) {
+  return [...new Set(owner
+    .split(/[;,]/)
+    .map((person) => person.replace(/\([^)]*\)/g, "").trim())
+    .filter((person) => person && !person.includes("/") && !person.startsWith("Ответственный"))
+    .map((person) => person.split(/\s+/)[0])
+    .filter(Boolean))];
 }
 
 function makeDonut(items: { label: Status; value: number }[], total: number) {
