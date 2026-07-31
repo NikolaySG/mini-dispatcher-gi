@@ -42,10 +42,13 @@ async function ensureSeed() {
   const db = getDb();
   const existing = await db.select({ id: tasks.id }).from(tasks).limit(1);
   if (existing.length) return;
-  await db.insert(tasks).values(seed.map(([id, title, description, owner, ownerEmail, status, priority, due, created, author, project]) => ({
+  const seedTasks = seed.map(([id, title, description, owner, ownerEmail, status, priority, due, created, author, project]) => ({
     id, title, description, owner, ownerEmail, status, priority, due, created, author, project,
     historyJson: JSON.stringify([{ date: `${created.split("-").reverse().join(".")}, 09:00`, title: "Поручение создано", text: `Назначен ${owner}.` }]),
-  })));
+  }));
+  for (let offset = 0; offset < seedTasks.length; offset += 5) {
+    await db.insert(tasks).values(seedTasks.slice(offset, offset + 5)).onConflictDoNothing();
+  }
 }
 
 async function ensureJournalImport() {
