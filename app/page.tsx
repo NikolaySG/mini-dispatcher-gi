@@ -45,6 +45,10 @@ export default function Home() {
   const [modal, setModal] = useState<"create" | "edit" | null>(null);
   const [draft, setDraft] = useState<TaskDraft>(emptyDraft);
   const [toast, setToast] = useState("");
+  const [clock, setClock] = useState(() => new Date());
+  const [lastSync, setLastSync] = useState<Date | null>(null);
+  const [connectionState, setConnectionState] = useState<"loading" | "online" | "error">("loading");
+  const [adminMode, setAdminMode] = useState(true);
 
   const notify = (message: string) => {
     setToast(message);
@@ -58,9 +62,19 @@ export default function Home() {
         if (!response.ok) throw new Error(payload.error);
         setTasks(payload.tasks);
         setSelectedId(payload.tasks[0]?.id ?? "");
+        setLastSync(new Date());
+        setConnectionState("online");
       })
-      .catch((error) => notify(error instanceof Error ? error.message : "Не удалось загрузить данные"))
+      .catch((error) => {
+        setConnectionState("error");
+        notify(error instanceof Error ? error.message : "Не удалось загрузить данные");
+      })
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(new Date()), 30000);
+    return () => window.clearInterval(timer);
   }, []);
 
   const selected = tasks.find((task) => task.id === selectedId) ?? tasks[0];
@@ -211,9 +225,19 @@ export default function Home() {
         </div>
         <div className="header-actions">
           <button className="ghost-button" onClick={() => downloadTasksCsv(filtered, "filtr")}>Экспорт CSV</button>
-          <button className="create-button" onClick={openCreate}><span>＋</span> Новое поручение</button>
+          <button className="create-button" disabled={!adminMode} onClick={openCreate}><span>＋</span> Новое поручение</button>
         </div>
       </header>
+
+      <section className="system-status-bar" aria-label="Состояние диспетчерской">
+        <div className={`system-status ${connectionState}`}><i /><span>Система</span><strong>{connectionState === "online" ? "Работает" : connectionState === "loading" ? "Подключение" : "Ошибка связи"}</strong></div>
+        <div><span>Дата и время</span><strong>{formatSystemTime(clock)}</strong></div>
+        <div><span>Последняя синхронизация</span><strong>{lastSync ? formatSystemTime(lastSync) : "Ожидание данных"}</strong></div>
+        <div><span>Источник</span><strong>{connectionState === "online" ? "D1 · доступен" : "D1 · проверка"}</strong></div>
+        <button className={adminMode ? "admin active" : "admin"} onClick={() => setAdminMode((current) => !current)} aria-pressed={adminMode}>
+          <i />{adminMode ? "Администратор" : "Просмотр"}
+        </button>
+      </section>
 
       <section className="hero-grid">
         <div className="hero-copy">
@@ -240,7 +264,7 @@ export default function Home() {
       <section className="metric-deck" aria-label="Сводные показатели">
         {metrics.map(([label, value, tone, caption], index) => (
           <button className={`metric-tile ${tone}`} key={label} onClick={() => setStatus(label === "Уточнить" ? "Требует уточнения" : label === "Всего" ? "Все" : label)}>
-            <span className="metric-index">0{index + 1}</span><span className="metric-label">{label}</span>
+            <span className="metric-index">0{index + 1}</span><span className="metric-label">{label}</span><span className="metric-state"><i />{metricState(label)}</span>
             <strong>{String(value).padStart(2, "0")}</strong><small>{caption}</small><i className="metric-line" />
           </button>
         ))}
@@ -283,10 +307,10 @@ export default function Home() {
               </div>
               <p className="task-description">{selected.description || "Описание не заполнено."}</p>
               <div className="inspector-actions">
-                <button className="action primary-action" onClick={openEdit}>✎ Изменить</button>
-                <button className="action success-action" disabled={busy || selected.status === "Выполнено"} onClick={() => quickStatus("Выполнено")}>✓ Выполнено</button>
-                <button className="action remove-action" disabled={busy || selected.status === "Снято"} onClick={() => quickStatus("Снято")}>⊘ Снять</button>
-                <button className="action delete-action" disabled={busy} onClick={deleteTask}>⌫ Удалить</button>
+                <button className="action primary-action" disabled={!adminMode} onClick={openEdit}>✎ Изменить</button>
+                <button className="action success-action" disabled={!adminMode || busy || selected.status === "Выполнено"} onClick={() => quickStatus("Выполнено")}>✓ Выполнено</button>
+                <button className="action remove-action" disabled={!adminMode || busy || selected.status === "Снято"} onClick={() => quickStatus("Снято")}>⊘ Снять</button>
+                <button className="action delete-action" disabled={!adminMode || busy} onClick={deleteTask}>⌫ Удалить</button>
               </div>
               <div className="detail-matrix">
                 <div><span>Ответственный</span><strong>{selected.owner}</strong></div>
@@ -378,6 +402,19 @@ function executorSurnames(owner: string) {
     .filter((person) => person && !person.includes("/") && !person.startsWith("Ответственный"))
     .map((person) => person.split(/\s+/)[0])
     .filter(Boolean))];
+}
+
+function formatSystemTime(date: Date) {
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+  }).format(date).replace(",", " ·");
+}
+
+function metricState(label: string) {
+  if (label === "Просрочено") return "критично";
+  if (label === "Уточнить" || label === "На проверке") return "контроль";
+  if (label === "Выполнено") return "норма";
+  return label === "В работе" ? "активно" : "реестр";
 }
 
 function makeDonut(items: { label: Status; value: number }[], total: number) {
