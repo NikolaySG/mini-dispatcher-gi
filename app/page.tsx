@@ -19,7 +19,6 @@ type TaskDraft = Omit<Task, "id" | "created" | "history">;
 
 const statuses: Status[] = ["В работе", "На проверке", "Требует уточнения", "Просрочено", "Выполнено", "Снято"];
 const priorities: Priority[] = ["Критический", "Высокий", "Средний", "Низкий"];
-const runtimeNow = Date.now();
 const statusColors: Record<Status, string> = {
   "Выполнено": "#37e6a1", "В работе": "#3cc8ff", "Просрочено": "#ff5263",
   "На проверке": "#ffc857", "Требует уточнения": "#b892ff", "Снято": "#718096",
@@ -49,7 +48,8 @@ export default function Home() {
   const [modal, setModal] = useState<"create" | "edit" | null>(null);
   const [draft, setDraft] = useState<TaskDraft>(emptyDraft);
   const [toast, setToast] = useState("");
-  const [clock, setClock] = useState(() => new Date());
+  const [clock, setClock] = useState<Date | null>(null);
+  const [runtimeNow, setRuntimeNow] = useState(0);
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [connectionState, setConnectionState] = useState<"loading" | "online" | "error">("loading");
   const [adminMode, setAdminMode] = useState(true);
@@ -84,8 +84,14 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setClock(new Date()), 30000);
-    return () => window.clearInterval(timer);
+    const updateClock = () => {
+      const now = new Date();
+      setClock(now);
+      setRuntimeNow(now.getTime());
+    };
+    const initial = window.setTimeout(updateClock, 0);
+    const timer = window.setInterval(updateClock, 30000);
+    return () => { window.clearTimeout(initial); window.clearInterval(timer); };
   }, []);
 
   const selected = tasks.find((task) => task.id === selectedId) ?? tasks[0];
@@ -101,7 +107,7 @@ export default function Home() {
       && (priority === "Все" || task.priority === priority)
       && dueMatch
       && (!q || `${task.id} ${task.title} ${task.description} ${task.project}`.toLowerCase().includes(q));
-  }), [tasks, owner, status, priority, due, query]);
+  }), [tasks, owner, status, priority, due, query, runtimeNow]);
 
   const statusCounts = statuses.map((label) => ({
     label, value: tasks.filter((task) => task.status === label).length,
@@ -251,7 +257,7 @@ export default function Home() {
 
       <section className="system-status-bar" aria-label="Состояние диспетчерской" data-connection={connectionState}>
         <div className={`system-status ${connectionState}`}><i /><span>Система</span><strong>{connectionState === "online" ? "Работает" : connectionState === "loading" ? "Подключение" : "Ошибка связи"}</strong></div>
-        <div><span>Дата и время</span><strong>{formatSystemTime(clock)}</strong></div>
+        <div><span>Дата и время</span><strong>{clock ? formatSystemTime(clock) : "Синхронизация часов"}</strong></div>
         <div><span>Последняя синхронизация</span><strong>{lastSync ? formatSystemTime(lastSync) : "Ожидание данных"}</strong></div>
         <div><span>Источник</span><strong>{connectionState === "online" ? "D1 · доступен" : "D1 · проверка"}</strong></div>
         <button className="meeting-button" onClick={() => setMeetingMode(true)}><i />Совещание</button>
@@ -412,6 +418,7 @@ function executorSurnames(owner: string) {
 function formatSystemTime(date: Date) {
   return new Intl.DateTimeFormat("ru-RU", {
     day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+    timeZone: "Europe/Saratov",
   }).format(date).replace(",", " ·");
 }
 
