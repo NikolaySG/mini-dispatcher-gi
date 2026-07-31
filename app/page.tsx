@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { CommandCore } from "./components/command-core";
 import { DeadlineIndicator, getDeadlineState } from "./components/deadline-indicator";
 import { OperationsPanels } from "./components/operations-panels";
+import { MeetingMode } from "./components/meeting-mode";
 import { createTaskMailto, downloadTasksCsv } from "./services/task-exchange";
 
 type Status = "Выполнено" | "В работе" | "Просрочено" | "На проверке" | "Требует уточнения" | "Снято";
@@ -52,10 +53,17 @@ export default function Home() {
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [connectionState, setConnectionState] = useState<"loading" | "online" | "error">("loading");
   const [adminMode, setAdminMode] = useState(true);
+  const [meetingMode, setMeetingMode] = useState(false);
+  const [highlightedId, setHighlightedId] = useState("");
 
   const notify = (message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(""), 2800);
+  };
+
+  const highlightTask = (id: string) => {
+    setHighlightedId(id);
+    window.setTimeout(() => setHighlightedId(""), 1800);
   };
 
   useEffect(() => {
@@ -171,6 +179,7 @@ export default function Home() {
         ? [payload.task, ...current]
         : current.map((task) => task.id === payload.task.id ? payload.task : task));
       setSelectedId(payload.task.id);
+      highlightTask(payload.task.id);
       setModal(null);
       notify(modal === "create" ? "Поручение создано" : "Изменения сохранены");
     } catch (error) {
@@ -191,6 +200,7 @@ export default function Home() {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error);
       setTasks((current) => current.map((task) => task.id === selected.id ? payload.task : task));
+      highlightTask(selected.id);
       notify(nextStatus === "Выполнено" ? "Поручение выполнено" : nextStatus === "Снято" ? "Поручение снято" : "Статус обновлён");
     } catch (error) {
       notify(error instanceof Error ? error.message : "Не удалось изменить статус");
@@ -218,6 +228,7 @@ export default function Home() {
 
   return (
     <main className="app-shell">
+      {meetingMode && <MeetingMode tasks={activeTasks} now={runtimeNow} onClose={() => setMeetingMode(false)} onSelect={setSelectedId} />}
       <div className="ambient ambient-a" /><div className="ambient ambient-b" />
       <div className="hud-frame" aria-hidden="true"><i /><i /><i /><i /></div>
       <div className="hud-side-rail" aria-hidden="true">
@@ -238,11 +249,12 @@ export default function Home() {
         </div>
       </header>
 
-      <section className="system-status-bar" aria-label="Состояние диспетчерской">
+      <section className="system-status-bar" aria-label="Состояние диспетчерской" data-connection={connectionState}>
         <div className={`system-status ${connectionState}`}><i /><span>Система</span><strong>{connectionState === "online" ? "Работает" : connectionState === "loading" ? "Подключение" : "Ошибка связи"}</strong></div>
         <div><span>Дата и время</span><strong>{formatSystemTime(clock)}</strong></div>
         <div><span>Последняя синхронизация</span><strong>{lastSync ? formatSystemTime(lastSync) : "Ожидание данных"}</strong></div>
         <div><span>Источник</span><strong>{connectionState === "online" ? "D1 · доступен" : "D1 · проверка"}</strong></div>
+        <button className="meeting-button" onClick={() => setMeetingMode(true)}><i />Совещание</button>
         <button className={adminMode ? "admin active" : "admin"} onClick={() => setAdminMode((current) => !current)} aria-pressed={adminMode}>
           <i />{adminMode ? "Администратор" : "Просмотр"}
         </button>
@@ -288,7 +300,7 @@ export default function Home() {
             <div className="task-list-head"><span>ПОРУЧЕНИЕ</span><span>ОТВЕТСТВЕННЫЙ</span><span>СРОК / СОСТОЯНИЕ</span><span>СТАТУС</span></div>
             {loading && <div className="loading-state"><i /><span>Поднимаем оперативную картину…</span></div>}
             {!loading && filtered.map((task) => (
-              <button className={`task-row deadline-${getDeadlineState(task.due, task.status, runtimeNow)} ${task.priority === "Критический" && task.status !== "Выполнено" ? "critical-row" : ""} ${selected?.id === task.id ? "selected" : ""}`} key={task.id} onClick={() => setSelectedId(task.id)}>
+              <button aria-current={selected?.id === task.id ? "true" : undefined} className={`task-row deadline-${getDeadlineState(task.due, task.status, runtimeNow)} ${task.priority === "Критический" && task.status !== "Выполнено" ? "critical-row" : ""} ${highlightedId === task.id ? "recently-updated" : ""} ${selected?.id === task.id ? "selected" : ""}`} key={task.id} onClick={() => setSelectedId(task.id)}>
                 <span className="task-main"><small>{task.id} · {task.project}</small><strong>{task.title}</strong><em className={`priority-dot ${task.priority.toLowerCase()}`}>{task.priority}</em></span>
                 <span className="owner-cell"><i>{task.owner.slice(-1)}</i><b>{task.owner}</b></span>
                 <DeadlineIndicator due={task.due} status={task.status} now={runtimeNow} />
@@ -348,7 +360,7 @@ export default function Home() {
       <OperationsPanels tasks={activeTasks} onSelect={setSelectedId} />
 
       <footer><span>MINI DISPATCHER / GI</span><span>Данные хранятся в защищённой базе · изменения сохраняются автоматически</span></footer>
-      {toast && <div className="toast"><i />{toast}</div>}
+      {toast && <div className="toast" role="status" aria-live="polite"><i />{toast}</div>}
       {modal && <TaskModal mode={modal} draft={draft} setDraft={setDraft} onClose={() => setModal(null)} onSubmit={saveTask} busy={busy} />}
     </main>
   );
@@ -360,9 +372,9 @@ function TaskModal({ mode, draft, setDraft, onClose, onSubmit, busy }: {
 }) {
   const field = <K extends keyof TaskDraft>(key: K, value: TaskDraft[K]) => setDraft({ ...draft, [key]: value });
   return (
-    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="task-modal-title" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <form className="task-modal" onSubmit={onSubmit}>
-        <div className="modal-head"><div><p className="kicker">УПРАВЛЕНИЕ ПОРУЧЕНИЕМ</p><h2>{mode === "create" ? "Новое поручение" : "Редактирование"}</h2></div><button type="button" onClick={onClose}>×</button></div>
+        <div className="modal-head"><div><p className="kicker">УПРАВЛЕНИЕ ПОРУЧЕНИЕМ</p><h2 id="task-modal-title">{mode === "create" ? "Новое поручение" : "Редактирование"}</h2></div><button type="button" aria-label="Закрыть окно" onClick={onClose}>×</button></div>
         <div className="form-grid">
           <label className="wide"><span>Название *</span><input required autoFocus value={draft.title} onChange={(e) => field("title", e.target.value)} placeholder="Что необходимо сделать" /></label>
           <label><span>Ответственный *</span><input required value={draft.owner} onChange={(e) => field("owner", e.target.value)} placeholder="ФИО или роль" /></label>
