@@ -1,6 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import { getDb } from "../../../db";
-import { tasks } from "../../../db/schema";
+import { appMeta, tasks } from "../../../db/schema";
+import { JOURNAL_IMPORT_KEY, journalTasks } from "../../data/journal-import";
 
 type HistoryEvent = { date: string; title: string; text: string };
 
@@ -47,9 +48,29 @@ async function ensureSeed() {
   })));
 }
 
+async function ensureJournalImport() {
+  const db = getDb();
+  const [completed] = await db.select({ key: appMeta.key }).from(appMeta)
+    .where(eq(appMeta.key, JOURNAL_IMPORT_KEY)).limit(1);
+  if (completed) return;
+
+  for (let offset = 0; offset < journalTasks.length; offset += 5) {
+    await db.insert(tasks).values(journalTasks.slice(offset, offset + 5)).onConflictDoNothing();
+  }
+  await db.insert(appMeta).values({
+    key: JOURNAL_IMPORT_KEY,
+    value: JSON.stringify({
+      source: "Журнал_исполнения_поручений_ПОЛНЫЙ_с_дополнениями.xlsx",
+      imported: journalTasks.length,
+      importedAt: "2026-07-31",
+    }),
+  }).onConflictDoNothing();
+}
+
 export async function GET() {
   try {
     await ensureSeed();
+    await ensureJournalImport();
     const rows = await getDb().select().from(tasks).orderBy(asc(tasks.id));
     return Response.json({ tasks: rows.map(serialize) });
   } catch (error) {

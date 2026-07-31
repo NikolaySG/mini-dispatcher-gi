@@ -15,6 +15,7 @@ type TaskDraft = Omit<Task, "id" | "created" | "history">;
 
 const statuses: Status[] = ["В работе", "На проверке", "Требует уточнения", "Просрочено", "Выполнено", "Снято"];
 const priorities: Priority[] = ["Критический", "Высокий", "Средний", "Низкий"];
+const runtimeNow = Date.now();
 const statusColors: Record<Status, string> = {
   "Выполнено": "#37e6a1", "В работе": "#3cc8ff", "Просрочено": "#ff5263",
   "На проверке": "#ffc857", "Требует уточнения": "#b892ff", "Снято": "#718096",
@@ -29,7 +30,7 @@ const emptyDraft: TaskDraft = {
 };
 
 const formatDate = (date: string) =>
-  new Intl.DateTimeFormat("ru-RU").format(new Date(`${date}T12:00:00`));
+  date ? new Intl.DateTimeFormat("ru-RU").format(new Date(`${date}T12:00:00`)) : "Не определён";
 
 export default function Home() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -45,6 +46,11 @@ export default function Home() {
   const [draft, setDraft] = useState<TaskDraft>(emptyDraft);
   const [toast, setToast] = useState("");
 
+  const notify = (message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(""), 2800);
+  };
+
   useEffect(() => {
     fetch("/api/tasks")
       .then(async (response) => {
@@ -57,18 +63,13 @@ export default function Home() {
       .finally(() => setLoading(false));
   }, []);
 
-  const notify = (message: string) => {
-    setToast(message);
-    window.setTimeout(() => setToast(""), 2800);
-  };
-
   const selected = tasks.find((task) => task.id === selectedId) ?? tasks[0];
   const activeTasks = tasks.filter((task) => task.status !== "Снято");
   const owners = [...new Set(tasks.map((task) => task.owner))].sort();
 
   const filtered = useMemo(() => tasks.filter((task) => {
-    const diff = Math.ceil((new Date(`${task.due}T12:00:00`).getTime() - Date.now()) / 86400000);
-    const dueMatch = due === "Все" || (due === "Просрочено" && diff < 0) || (due === "7 дней" && diff >= 0 && diff <= 7) || (due === "Позже" && diff > 7);
+    const diff = task.due ? Math.ceil((new Date(`${task.due}T12:00:00`).getTime() - runtimeNow) / 86400000) : Number.NaN;
+    const dueMatch = due === "Все" || (due === "Без срока" && !task.due) || (due === "Просрочено" && diff < 0) || (due === "7 дней" && diff >= 0 && diff <= 7) || (due === "Позже" && diff > 7);
     const q = query.trim().toLowerCase();
     return (owner === "Все" || task.owner === owner)
       && (status === "Все" || task.status === status)
@@ -105,8 +106,17 @@ export default function Home() {
 
   const openEdit = () => {
     if (!selected) return;
-    const { id: _id, created: _created, history: _history, ...values } = selected;
-    setDraft(values);
+    setDraft({
+      title: selected.title,
+      description: selected.description,
+      owner: selected.owner,
+      ownerEmail: selected.ownerEmail,
+      status: selected.status,
+      priority: selected.priority,
+      due: selected.due,
+      author: selected.author,
+      project: selected.project,
+    });
     setModal("edit");
   };
 
@@ -184,7 +194,7 @@ export default function Home() {
       <header className="command-header">
         <div className="brand">
           <div className="brand-orbit"><span>ГИ</span></div>
-          <div><p className="kicker">ИНТЕЛЛЕКТУАЛЬНЫЙ КОМАНДНЫЙ КОНТУР</p><h1>Диспетчерская <em>// AI</em></h1></div>
+          <div><p className="kicker">ИНТЕЛЛЕКТУАЛЬНЫЙ КОМАНДНЫЙ КОНТУР</p><h1>Диспетчерская <em>/ AI</em></h1></div>
         </div>
         <div className="header-center">
           <span className="live-pulse" /><span>ASSISTANT CORE ONLINE</span>
@@ -239,7 +249,7 @@ export default function Home() {
           <Filter value={owner} onChange={setOwner} options={owners} label="Ответственный" />
           <Filter value={status} onChange={setStatus} options={statuses} label="Статус" />
           <Filter value={priority} onChange={setPriority} options={priorities} label="Приоритет" />
-          <Filter value={due} onChange={setDue} options={["Просрочено", "7 дней", "Позже"]} label="Срок" />
+          <Filter value={due} onChange={setDue} options={["Без срока", "Просрочено", "7 дней", "Позже"]} label="Срок" />
           <button className="clear-filters" onClick={() => { setOwner("Все"); setStatus("Все"); setPriority("Все"); setDue("Все"); setQuery(""); }}>Сброс</button>
         </div>
 
@@ -347,7 +357,8 @@ function StatusBadge({ status }: { status: Status }) {
 }
 
 function daysLabel(date: string) {
-  const diff = Math.ceil((new Date(`${date}T23:59:59`).getTime() - Date.now()) / 86400000);
+  if (!date) return "назначить дату";
+  const diff = Math.ceil((new Date(`${date}T23:59:59`).getTime() - runtimeNow) / 86400000);
   if (diff < 0) return `${Math.abs(diff)} дн. просрочки`;
   if (diff === 0) return "сегодня";
   return `${diff} дн. осталось`;

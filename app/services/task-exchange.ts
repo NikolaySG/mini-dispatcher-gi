@@ -10,7 +10,7 @@ export type ExportableTask = {
 };
 
 const formatDate = (date: string) =>
-  new Intl.DateTimeFormat("ru-RU").format(new Date(`${date}T12:00:00`));
+  date ? new Intl.DateTimeFormat("ru-RU").format(new Date(`${date}T12:00:00`)) : "не определён";
 
 // Browser adapter. A future mail integration can replace this function
 // without changing the task register or task card.
