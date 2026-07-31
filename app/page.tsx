@@ -90,14 +90,18 @@ export default function Home() {
     .map(([label, value]) => ({ label, value }))
     .sort((left, right) => right.value - left.value || left.label.localeCompare(right.label, "ru"));
   const maxOwner = Math.max(1, ...ownerCounts.map((item) => item.value));
-  const completion = activeTasks.length
-    ? Math.round(activeTasks.filter((task) => task.status === "Выполнено").length / activeTasks.length * 100)
+  const attentionCount = activeTasks.filter((task) =>
+    task.status === "Просрочено" || task.status === "Требует уточнения"
+  ).length;
+  const attentionShare = activeTasks.length
+    ? Math.round(attentionCount / activeTasks.length * 100)
     : 0;
+  const attentionTone = attentionCount === 0 ? "#37e6a1" : attentionShare > 50 ? "#ff5263" : "#ffc857";
   const donutStops = makeDonut(statusCounts, Math.max(1, tasks.length));
 
   const metrics = [
     ["Всего", activeTasks.length, "neutral", "в активном контуре"],
-    ["Выполнено", statusCounts.find((item) => item.label === "Выполнено")?.value ?? 0, "green", `${completion}% исполнения`],
+    ["Выполнено", statusCounts.find((item) => item.label === "Выполнено")?.value ?? 0, "green", "закрыто в журнале"],
     ["В работе", statusCounts.find((item) => item.label === "В работе")?.value ?? 0, "blue", "требуют внимания"],
     ["Просрочено", statusCounts.find((item) => item.label === "Просрочено")?.value ?? 0, "red", "критическая зона"],
     ["На проверке", statusCounts.find((item) => item.label === "На проверке")?.value ?? 0, "amber", "ожидают решения"],
@@ -216,16 +220,16 @@ export default function Home() {
           <p className="signal-label">ДОБРЫЙ ВЕЧЕР, НИКОЛАЙ · ОПЕРАТИВНАЯ КАРТИНА ГОТОВА</p>
           <div className="assistant-brief">
             <span className="assistant-wave"><i /><i /><i /><i /><i /><i /><i /></span>
-            <div><small>СИСТЕМНЫЙ БРИФИНГ</small><strong>{statusCounts.find((item) => item.label === "Просрочено")?.value ?? 0} просрочено · {statusCounts.find((item) => item.label === "На проверке")?.value ?? 0} на проверке · {completion}% исполнено</strong></div>
+            <div><small>СИСТЕМНЫЙ БРИФИНГ</small><strong>{statusCounts.find((item) => item.label === "Просрочено")?.value ?? 0} просрочено · {statusCounts.find((item) => item.label === "Требует уточнения")?.value ?? 0} уточнить · {attentionCount} в фокусе</strong></div>
             <b>LIVE</b>
           </div>
         </div>
         <div className="completion-core">
-          <div className="core-ring" style={{ "--progress": `${completion * 3.6}deg` } as React.CSSProperties}>
+          <div className="core-ring" style={{ "--progress": `${attentionShare * 3.6}deg`, "--core-tone": attentionTone } as React.CSSProperties}>
             <span className="core-orbit orbit-one" /><span className="core-orbit orbit-two" /><i className="core-node node-a" /><i className="core-node node-b" />
-            <div><strong>{completion}<sup>%</sup></strong><span>исполнено</span></div>
+            <div><strong>{attentionCount}</strong><span>требуют решения</span></div>
           </div>
-          <div className="core-caption"><i /><span>Реактор исполнения</span><b>{completion >= 70 ? "STABLE" : completion >= 40 ? "MONITOR" : "ALERT"}</b></div>
+          <div className="core-caption"><i style={{ background: attentionTone, boxShadow: `0 0 10px ${attentionTone}` }} /><span>Контур внимания</span><b style={{ color: attentionTone }}>{attentionCount === 0 ? "NORMAL" : attentionShare <= 25 ? "STABLE" : attentionShare <= 50 ? "MONITOR" : "ALERT"}</b></div>
         </div>
         <div className="risk-radar">
           <div className="radar-grid"><span className="radar-sweep" /><i className="blip b1" /><i className="blip b2" /><i className="blip b3" /></div>

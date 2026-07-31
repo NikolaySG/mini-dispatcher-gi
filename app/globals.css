@@ -81,7 +81,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .completion-core { display: grid; justify-items: center; }
 .core-ring {
   --progress: 0deg; width: 210px; height: 210px; display: grid; place-items: center; border-radius: 50%; position: relative;
-  background: conic-gradient(var(--cyan) 0 var(--progress), rgba(60,200,255,.08) var(--progress) 360deg);
+  background: conic-gradient(var(--core-tone, var(--cyan)) 0 var(--progress), rgba(60,200,255,.08) var(--progress) 360deg);
   box-shadow: 0 0 50px rgba(60,200,255,.08);
 }
 .core-ring::before { content: ""; position: absolute; inset: 8px; background: #09121e; border-radius: 50%; border: 1px solid rgba(60,200,255,.18); }
@@ -140,7 +140,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .core-ring {
   background:
     radial-gradient(circle, rgba(110,234,255,.16) 0 2%, transparent 3% 34%, rgba(110,234,255,.08) 35% 36%, transparent 37%),
-    conic-gradient(var(--cyan) 0 var(--progress), rgba(110,234,255,.06) var(--progress) 360deg);
+    conic-gradient(var(--core-tone, var(--cyan)) 0 var(--progress), rgba(110,234,255,.06) var(--progress) 360deg);
   filter: drop-shadow(0 0 28px rgba(110,234,255,.16));
 }
 .core-ring::before { inset: 13px; background: radial-gradient(circle, rgba(22,95,125,.2), #07131f 62%); box-shadow: inset 0 0 35px rgba(110,234,255,.12); }
