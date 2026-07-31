@@ -120,6 +120,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .core-ring > div { z-index: 1; text-align: center; }
 .core-ring strong { display: block; font-size: 57px; letter-spacing: -.07em; font-family: var(--font-geist-mono), monospace; }
 .core-ring sup { font-size: 19px; color: var(--cyan); }.core-ring span { color: #708197; font-size: 9px; letter-spacing: .18em; text-transform: uppercase; }
+.core-state-label { margin: 17px 0 -10px; color: #c9d5de; font-size: 10px; font-weight: 700; letter-spacing: .02em; }
 .core-caption { width: 250px; margin-top: 25px; padding: 10px 12px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: 9px; color: #718196; }
 .core-caption i { width: 6px; height: 6px; background: var(--cyan); border-radius: 50%; box-shadow: 0 0 10px var(--cyan); }.core-caption b { color: var(--cyan); }
 .risk-radar { display: grid; justify-items: center; gap: 18px; }
@@ -131,9 +132,11 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .radar-sweep { position: absolute; inset: 50% 0 0 50%; transform-origin: 0 0; background: linear-gradient(30deg, rgba(255,82,99,.28), transparent 58%); animation: sweep 4s linear infinite; }
 .blip { position: absolute; width: 5px; height: 5px; background: var(--red); border-radius: 50%; box-shadow: 0 0 9px var(--red); animation: blink 1.8s infinite; }
 .b1 { top: 30%; left: 61%; }.b2 { top: 63%; left: 34%; animation-delay: .6s; }.b3 { top: 47%; left: 73%; animation-delay: 1.1s; }
-.risk-radar > div:last-child { display: grid; grid-template-columns: 1fr auto; width: 165px; }
-.risk-radar span { grid-column: 1 / 3; color: #6f7d8f; font-size: 8px; letter-spacing: .16em; }
-.risk-radar strong { font-size: 32px; color: var(--red); }.risk-radar small { align-self: end; padding-bottom: 6px; color: #8b98a8; font-size: 9px; }
+.risk-readout { width: 190px; border-top: 1px solid var(--border); }
+.risk-readout > span { display: block; padding: 8px 0; color: #6f7d8f; font-size: 8px; letter-spacing: .16em; }
+.risk-readout > div { min-height: 46px; display: grid; grid-template-columns: 42px 1fr; align-items: center; border-top: 1px solid rgba(133,170,202,.08); }
+.risk-readout strong { font: 25px var(--font-geist-mono), monospace; color: var(--critical); }.risk-readout div:last-child strong { color: var(--warning); }
+.risk-readout small { color: #8b98a8; font-size: 8px; line-height: 1.35; }
 
 /* Holographic assistant layer */
 .hud-frame { position: fixed; inset: 13px; z-index: 30; pointer-events: none; opacity: .52; }

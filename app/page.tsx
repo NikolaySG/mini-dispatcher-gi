@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { CommandCore } from "./components/command-core";
 import { createTaskMailto, downloadTasksCsv } from "./services/task-exchange";
 
 type Status = "Выполнено" | "В работе" | "Просрочено" | "На проверке" | "Требует уточнения" | "Снято";
@@ -111,6 +112,12 @@ export default function Home() {
     ? Math.round(attentionCount / activeTasks.length * 100)
     : 0;
   const attentionTone = attentionCount === 0 ? "#37e6a1" : attentionShare > 50 ? "#ff5263" : "#ffc857";
+  const criticalCount = activeTasks.filter((task) => task.priority === "Критический" && task.status !== "Выполнено").length;
+  const nearDueCount = activeTasks.filter((task) => {
+    if (!task.due || task.status === "Выполнено") return false;
+    const days = Math.ceil((new Date(`${task.due}T23:59:59`).getTime() - runtimeNow) / 86400000);
+    return days >= 0 && days <= 7;
+  }).length;
   const donutStops = makeDonut(statusCounts, Math.max(1, tasks.length));
 
   const metrics = [
@@ -248,17 +255,7 @@ export default function Home() {
             <b>LIVE</b>
           </div>
         </div>
-        <div className="completion-core">
-          <div className="core-ring" style={{ "--progress": `${attentionShare * 3.6}deg`, "--core-tone": attentionTone } as React.CSSProperties}>
-            <span className="core-orbit orbit-one" /><span className="core-orbit orbit-two" /><i className="core-node node-a" /><i className="core-node node-b" />
-            <div><strong>{attentionCount}</strong><span>требуют решения</span></div>
-          </div>
-          <div className="core-caption"><i style={{ background: attentionTone, boxShadow: `0 0 10px ${attentionTone}` }} /><span>Контур внимания</span><b style={{ color: attentionTone }}>{attentionCount === 0 ? "NORMAL" : attentionShare <= 25 ? "STABLE" : attentionShare <= 50 ? "MONITOR" : "ALERT"}</b></div>
-        </div>
-        <div className="risk-radar">
-          <div className="radar-grid"><span className="radar-sweep" /><i className="blip b1" /><i className="blip b2" /><i className="blip b3" /></div>
-          <div><span>TACTICAL RISK SCAN</span><strong>{statusCounts.find((item) => item.label === "Просрочено")?.value ?? 0}</strong><small>просрочено</small></div>
-        </div>
+        <CommandCore attentionCount={attentionCount} attentionShare={attentionShare} criticalCount={criticalCount} nearDueCount={nearDueCount} tone={attentionTone} />
       </section>
 
       <section className="metric-deck" aria-label="Сводные показатели">
