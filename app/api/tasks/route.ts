@@ -2,6 +2,7 @@ import { asc, eq, inArray } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { appMeta, tasks } from "../../../db/schema";
 import { JOURNAL_IMPORT_KEY, journalTasks } from "../../data/journal-import";
+import { syncGoogleSheets } from "../../services/google-sheets-sync";
 
 type HistoryEvent = { date: string; title: string; text: string };
 
@@ -66,7 +67,9 @@ export async function GET() {
     await ensureDemoCleanup();
     await ensureJournalImport();
     const rows = await getDb().select().from(tasks).orderBy(asc(tasks.id));
-    return Response.json({ tasks: rows.map(serialize) });
+    const serialized = rows.map(serialize);
+    const googleSync = await syncGoogleSheets({ action: "replaceAll", tasks: serialized });
+    return Response.json({ tasks: serialized, googleSync });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Не удалось загрузить поручения" }, { status: 500 });
   }
@@ -95,7 +98,9 @@ export async function POST(request: Request) {
       project: payload.project?.trim() || "Без объекта",
       historyJson: JSON.stringify(history),
     }).returning();
-    return Response.json({ task: serialize(row) }, { status: 201 });
+    const task = serialize(row);
+    const googleSync = await syncGoogleSheets({ action: "upsert", task });
+    return Response.json({ task, googleSync }, { status: 201 });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Не удалось создать поручение" }, { status: 500 });
   }
@@ -132,7 +137,9 @@ export async function PATCH(request: Request) {
       historyJson: JSON.stringify(history),
       updatedAt: new Date().toISOString(),
     }).where(eq(tasks.id, payload.id)).returning();
-    return Response.json({ task: serialize(row) });
+    const task = serialize(row);
+    const googleSync = await syncGoogleSheets({ action: "upsert", task });
+    return Response.json({ task, googleSync });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Не удалось обновить поручение" }, { status: 500 });
   }
@@ -143,7 +150,8 @@ export async function DELETE(request: Request) {
     const id = new URL(request.url).searchParams.get("id");
     if (!id) return Response.json({ error: "Не указан ID" }, { status: 400 });
     await getDb().delete(tasks).where(eq(tasks.id, id));
-    return Response.json({ ok: true });
+    const googleSync = await syncGoogleSheets({ action: "delete", id });
+    return Response.json({ ok: true, googleSync });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Не удалось удалить поручение" }, { status: 500 });
   }
