@@ -52,6 +52,7 @@ export default function Home() {
   const [runtimeNow, setRuntimeNow] = useState(0);
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [connectionState, setConnectionState] = useState<"loading" | "online" | "error">("loading");
+  const [googleSync, setGoogleSync] = useState<"online" | "unavailable">("unavailable");
   const [adminMode, setAdminMode] = useState(true);
   const [meetingMode, setMeetingMode] = useState(false);
   const [highlightedId, setHighlightedId] = useState("");
@@ -75,6 +76,7 @@ export default function Home() {
         setSelectedId(payload.tasks[0]?.id ?? "");
         setLastSync(new Date());
         setConnectionState("online");
+        setGoogleSync(payload.googleSync === "online" ? "online" : "unavailable");
       })
       .catch((error) => {
         setConnectionState("error");
@@ -185,9 +187,13 @@ export default function Home() {
         ? [payload.task, ...current]
         : current.map((task) => task.id === payload.task.id ? payload.task : task));
       setSelectedId(payload.task.id);
+      setLastSync(new Date());
+      setGoogleSync(payload.googleSync === "online" ? "online" : "unavailable");
       highlightTask(payload.task.id);
       setModal(null);
-      notify(modal === "create" ? "Поручение создано" : "Изменения сохранены");
+      notify(payload.googleSync === "online"
+        ? modal === "create" ? "Поручение создано и записано в Google Sheets" : "Изменения сохранены в Google Sheets"
+        : "Сохранено в базе. Google Sheets временно недоступен");
     } catch (error) {
       notify(error instanceof Error ? error.message : "Не удалось сохранить");
     } finally {
@@ -206,8 +212,12 @@ export default function Home() {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error);
       setTasks((current) => current.map((task) => task.id === selected.id ? payload.task : task));
+      setLastSync(new Date());
+      setGoogleSync(payload.googleSync === "online" ? "online" : "unavailable");
       highlightTask(selected.id);
-      notify(nextStatus === "Выполнено" ? "Поручение выполнено" : nextStatus === "Снято" ? "Поручение снято" : "Статус обновлён");
+      notify(payload.googleSync === "online"
+        ? nextStatus === "Выполнено" ? "Поручение выполнено · Google Sheets обновлён" : nextStatus === "Снято" ? "Поручение снято · Google Sheets обновлён" : "Статус обновлён в Google Sheets"
+        : "Статус сохранён в базе. Google Sheets временно недоступен");
     } catch (error) {
       notify(error instanceof Error ? error.message : "Не удалось изменить статус");
     } finally {
@@ -224,7 +234,9 @@ export default function Home() {
       if (!response.ok) throw new Error(payload.error);
       setTasks((current) => current.filter((task) => task.id !== selected.id));
       setSelectedId(tasks.find((task) => task.id !== selected.id)?.id ?? "");
-      notify("Поручение удалено");
+      setLastSync(new Date());
+      setGoogleSync(payload.googleSync === "online" ? "online" : "unavailable");
+      notify(payload.googleSync === "online" ? "Поручение удалено из базы и Google Sheets" : "Удалено из базы. Google Sheets временно недоступен");
     } catch (error) {
       notify(error instanceof Error ? error.message : "Не удалось удалить");
     } finally {
@@ -259,7 +271,7 @@ export default function Home() {
         <div className={`system-status ${connectionState}`}><i /><span>Система</span><strong>{connectionState === "online" ? "Работает" : connectionState === "loading" ? "Подключение" : "Ошибка связи"}</strong></div>
         <div><span>Дата и время</span><strong>{clock ? formatSystemTime(clock) : "Синхронизация часов"}</strong></div>
         <div><span>Последняя синхронизация</span><strong>{lastSync ? formatSystemTime(lastSync) : "Ожидание данных"}</strong></div>
-        <div><span>Источник</span><strong>{connectionState === "online" ? "D1 · доступен" : "D1 · проверка"}</strong></div>
+        <div><span>Источник</span><strong>{connectionState === "online" ? googleSync === "online" ? "D1 + Google Sheets" : "D1 · Sheets недоступен" : "D1 · проверка"}</strong></div>
         <button className="meeting-button" onClick={() => setMeetingMode(true)}><i />Совещание</button>
         <button className={adminMode ? "admin active" : "admin"} onClick={() => setAdminMode((current) => !current)} aria-pressed={adminMode}>
           <i />{adminMode ? "Администратор" : "Просмотр"}
@@ -365,7 +377,7 @@ export default function Home() {
 
       <OperationsPanels tasks={activeTasks} onSelect={setSelectedId} />
 
-      <footer><span>MINI DISPATCHER / GI</span><span>Данные хранятся в защищённой базе · изменения сохраняются автоматически</span></footer>
+      <footer><span>MINI DISPATCHER / GI</span><span>Данные хранятся в D1 и синхронизируются с Google Sheets автоматически</span></footer>
       {toast && <div className="toast" role="status" aria-live="polite"><i />{toast}</div>}
       {modal && <TaskModal mode={modal} draft={draft} setDraft={setDraft} onClose={() => setModal(null)} onSubmit={saveTask} busy={busy} />}
     </main>
