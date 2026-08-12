@@ -1,7 +1,7 @@
-import { asc, eq, inArray } from "drizzle-orm";
+import { asc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { appMeta, tasks } from "../../../db/schema";
-import { JOURNAL_IMPORT_KEY, journalTasks } from "../../data/journal-import";
+import { JOURNAL_IMPORT_KEY, JOURNAL_SOURCE, journalTasks } from "../../data/journal-import";
 import { syncGoogleSheets } from "../../services/google-sheets-sync";
 
 type HistoryEvent = { date: string; title: string; text: string };
@@ -50,14 +50,31 @@ async function ensureJournalImport() {
   if (completed) return;
 
   for (let offset = 0; offset < journalTasks.length; offset += 5) {
-    await db.insert(tasks).values(journalTasks.slice(offset, offset + 5)).onConflictDoNothing();
+    const batch = journalTasks.slice(offset, offset + 5);
+    await db.insert(tasks).values(batch).onConflictDoUpdate({
+      target: tasks.id,
+      set: {
+        title: sql`excluded.title`,
+        description: sql`excluded.description`,
+        owner: sql`excluded.owner`,
+        ownerEmail: sql`excluded.owner_email`,
+        status: sql`excluded.status`,
+        priority: sql`excluded.priority`,
+        due: sql`excluded.due`,
+        created: sql`excluded.created`,
+        author: sql`excluded.author`,
+        project: sql`excluded.project`,
+        historyJson: sql`excluded.history_json`,
+        updatedAt: sql`excluded.updated_at`,
+      },
+    });
   }
   await db.insert(appMeta).values({
     key: JOURNAL_IMPORT_KEY,
     value: JSON.stringify({
-      source: "Журнал_исполнения_поручений_ПОЛНЫЙ_с_дополнениями.xlsx",
+      source: JOURNAL_SOURCE,
       imported: journalTasks.length,
-      importedAt: "2026-07-31",
+      importedAt: "2026-08-12",
     }),
   }).onConflictDoNothing();
 }
