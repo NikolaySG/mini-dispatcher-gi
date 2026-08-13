@@ -6,6 +6,7 @@ import { DeadlineIndicator, getDeadlineState } from "./components/deadline-indic
 import { OperationsPanels } from "./components/operations-panels";
 import { MeetingMode } from "./components/meeting-mode";
 import { createTaskMailto, downloadTasksCsv } from "./services/task-exchange";
+import { formatStoredDate, getDeadlineTransfers } from "./services/deadline-history";
 
 type Status = "Выполнено" | "В работе" | "Просрочено" | "На проверке" | "Требует уточнения" | "Снято";
 type Priority = "Критический" | "Высокий" | "Средний" | "Низкий";
@@ -325,19 +326,14 @@ export default function Home() {
   return (
     <main className="app-shell">
       {meetingMode && <MeetingMode tasks={activeTasks} now={runtimeNow} onClose={() => setMeetingMode(false)} onSelect={setSelectedId} />}
-      <div className="ambient ambient-a" /><div className="ambient ambient-b" />
-      <div className="hud-frame" aria-hidden="true"><i /><i /><i /><i /></div>
-      <div className="hud-side-rail" aria-hidden="true">
-        <span>GI / AI</span><b>01</b><i /><b>02</b><i /><b>03</b><i /><em>SYSTEM ONLINE</em>
-      </div>
       <header className="command-header">
         <div className="brand">
-          <div className="brand-orbit"><span>ГИ</span></div>
-          <div><p className="kicker">ИНТЕЛЛЕКТУАЛЬНЫЙ КОМАНДНЫЙ КОНТУР</p><h1>Диспетчерская <em>/ AI</em></h1></div>
+          <div className="brand-mark"><span>ГИ</span></div>
+          <div><p className="kicker">WorkSGA · КОНТУР ГЛАВНОГО ИНЖЕНЕРА</p><h1>Мини-диспетчерская</h1></div>
         </div>
         <div className="header-center">
-          <span className="live-pulse" /><span>ASSISTANT CORE ONLINE</span>
-          <b>{activeTasks.length}</b><small>ПОРУЧЕНИЙ В КОНТУРЕ</small>
+          <span className="live-pulse" /><span>СИСТЕМА РАБОТАЕТ</span>
+          <b>{activeTasks.length}</b><small>АКТИВНЫХ ПОРУЧЕНИЙ</small>
         </div>
         <div className="header-actions">
           <button className="ghost-button" onClick={() => downloadTasksCsv(filtered, "filtr")}>Экспорт CSV</button>
@@ -365,10 +361,12 @@ export default function Home() {
 
       <section className="hero-grid">
         <div className="hero-copy">
-          <p className="signal-label">ДОБРЫЙ ВЕЧЕР, НИКОЛАЙ · ОПЕРАТИВНАЯ КАРТИНА ГОТОВА</p>
+          <p className="signal-label">ОПЕРАТИВНАЯ КАРТИНА</p>
+          <h2>Контроль поручений<br /><em>главного инженера</em></h2>
+          <p>Сроки, ответственные, отклонения и последние изменения — в одном рабочем контуре.</p>
           <div className="assistant-brief">
-            <span className="assistant-wave"><i /><i /><i /><i /><i /><i /><i /></span>
-            <div><small>СИСТЕМНЫЙ БРИФИНГ</small><strong>{statusCounts.find((item) => item.label === "Просрочено")?.value ?? 0} просрочено · {statusCounts.find((item) => item.label === "Требует уточнения")?.value ?? 0} уточнить · {attentionCount} в фокусе</strong></div>
+            <span className="brief-indicator"><i /></span>
+            <div><small>ТЕКУЩИЙ ФОКУС</small><strong>{statusCounts.find((item) => item.label === "Просрочено")?.value ?? 0} просрочено · {statusCounts.find((item) => item.label === "Требует уточнения")?.value ?? 0} уточнить · {attentionCount} требуют внимания</strong></div>
             <b>LIVE</b>
           </div>
         </div>
@@ -400,12 +398,13 @@ export default function Home() {
 
         <div className="registry-grid">
           <div className="task-list">
-            <div className="task-list-head"><span>ПОРУЧЕНИЕ</span><span>ОТВЕТСТВЕННЫЙ</span><span>СРОК / СОСТОЯНИЕ</span><span>СТАТУС</span></div>
+            <div className="task-list-head"><span>ПОРУЧЕНИЕ</span><span>ОТВЕТСТВЕННЫЙ</span><span>ИСТОРИЯ СРОКА</span><span>НОВАЯ ПЛАНОВАЯ</span><span>СТАТУС</span></div>
             {loading && <div className="loading-state"><i /><span>Поднимаем оперативную картину…</span></div>}
             {!loading && filtered.map((task) => (
               <button aria-current={selected?.id === task.id ? "true" : undefined} className={`task-row deadline-${getDeadlineState(task.due, task.status, runtimeNow)} ${task.priority === "Критический" && task.status !== "Выполнено" ? "critical-row" : ""} ${highlightedId === task.id ? "recently-updated" : ""} ${selected?.id === task.id ? "selected" : ""}`} key={task.id} onClick={() => setSelectedId(task.id)}>
                 <span className="task-main"><small>{task.id} · {task.project}</small><strong>{task.title}</strong><em className={`priority-dot ${task.priority.toLowerCase()}`}>{task.priority}</em></span>
                 <span className="owner-cell"><i>{initials(splitPeople(task.owner)[0] ?? task.owner)}</i><b>{splitPeople(task.owner).join(", ")}</b>{splitPeople(task.owner).length > 1 && <em>+{splitPeople(task.owner).length - 1}</em>}</span>
+                <DeadlineHistory task={task} />
                 <DeadlineIndicator due={task.due} status={task.status} now={runtimeNow} />
                 <span><StatusBadge status={task.status} /></span>
               </button>
@@ -428,11 +427,15 @@ export default function Home() {
               </div>
               <div className="detail-matrix">
                 <div><span>Ответственные</span><strong>{splitPeople(selected.owner).join(", ")}</strong></div>
-                <div><span>Срок</span><strong>{formatDate(selected.due)}</strong></div>
+                <div><span>Новая плановая дата</span><strong>{formatDate(selected.due)}</strong></div>
                 <div><span>Приоритет</span><strong>{selected.priority}</strong></div>
                 <div><span>Объект</span><strong>{selected.project}</strong></div>
                 <div><span>Постановщик</span><strong>{selected.author}</strong></div>
                 <div><span>Создано</span><strong>{formatDate(selected.created)}</strong></div>
+              </div>
+              <div className="deadline-history-detail">
+                <div className="history-title"><span>ИСТОРИЯ СРОКА</span><b>{getDeadlineTransfers(selected.history).length}</b></div>
+                <DeadlineHistory task={selected} detailed />
               </div>
               <a className="mail-link" href={createTaskMailto(selected)}>↗ Сформировать письмо исполнителю</a>
               <div className="history-block">
@@ -477,6 +480,30 @@ export default function Home() {
       {responsibleModal && <ResponsibleModal mode={responsibleModal} draft={responsibleDraft} setDraft={setResponsibleDraft} onClose={() => setResponsibleModal(null)} onSubmit={saveResponsible} busy={busy} />}
     </main>
   );
+}
+
+function DeadlineHistory({ task, detailed = false }: { task: Task; detailed?: boolean }) {
+  const transfers = getDeadlineTransfers(task.history);
+  if (detailed) {
+    return <div className="deadline-timeline">
+      <div><span>1 · Дата создания</span><strong>{formatDate(task.created)}</strong></div>
+      <div><span>2 · Все переносы</span>{transfers.length
+        ? <ol>{transfers.map((transfer, index) => <li key={`${transfer.changedAt}-${index}`}><b>{transfer.from} → {transfer.to}</b><small>{transfer.changedAt}</small></li>)}</ol>
+        : <strong>Переносов не было</strong>}</div>
+      <div><span>3 · Новая плановая</span><strong>{formatStoredDate(task.due)}</strong></div>
+    </div>;
+  }
+  return <span className="deadline-history-cell">
+    <small>Создано: {formatDate(task.created)}</small>
+    <b>{transfers.length ? `${transfers.length} ${pluralTransfer(transfers.length)}` : "Без переносов"}</b>
+    {transfers.length > 0 && <em>{transfers.map((transfer) => transfer.to).join(" · ")}</em>}
+  </span>;
+}
+
+function pluralTransfer(value: number) {
+  const lastTwo = value % 100;
+  const last = value % 10;
+  return lastTwo >= 11 && lastTwo <= 14 ? "переносов" : last === 1 ? "перенос" : last >= 2 && last <= 4 ? "переноса" : "переносов";
 }
 
 function TaskModal({ mode, draft, setDraft, responsibles, onClose, onSubmit, busy }: {

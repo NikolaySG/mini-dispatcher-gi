@@ -134,7 +134,11 @@ export async function PATCH(request: Request) {
     const history = parseHistory(existing.historyJson);
     const changes: string[] = [];
     if (payload.status && payload.status !== existing.status) changes.push(`Статус: ${existing.status} → ${payload.status}`);
-    if (payload.due && payload.due !== existing.due) changes.push(`Срок изменён на ${payload.due.split("-").reverse().join(".")}`);
+    if (payload.due && payload.due !== existing.due) {
+      const previousDue = existing.due.split("-").reverse().join(".");
+      const nextDue = payload.due.split("-").reverse().join(".");
+      changes.push(`Срок перенесён с ${previousDue} на ${nextDue}`);
+    }
     history.unshift({
       date: nowRu(),
       title: nextStatus === "Выполнено" ? "Выполнение подтверждено" : nextStatus === "Снято" ? "Поручение снято" : "Карточка обновлена",
