@@ -158,6 +158,23 @@ export default function Home() {
     .map(([label, value]) => ({ label, value }))
     .sort((left, right) => right.value - left.value || left.label.localeCompare(right.label, "ru"));
   const maxOwner = Math.max(1, ...ownerCounts.map((item) => item.value));
+  const selectOwnerBySurname = (surname: string) => {
+    const matchedOwner = owners.find((person) => executorSurnames(person).includes(surname));
+    if (!matchedOwner) return;
+
+    setOwner(matchedOwner);
+    setStatus("Все");
+    setPriority("Все");
+    setDue("Все");
+    setQuery("");
+
+    const firstTask = tasks.find((task) => splitPeople(task.owner).includes(matchedOwner));
+    if (firstTask) setSelectedId(firstTask.id);
+
+    window.requestAnimationFrame(() => {
+      document.getElementById("task-registry")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
   const attentionCount = activeTasks.filter((task) =>
     task.status === "Просрочено" || task.status === "Требует уточнения"
   ).length;
@@ -403,7 +420,7 @@ export default function Home() {
         ))}
       </section>
 
-      <section className="control-surface">
+      <section className="control-surface" id="task-registry">
         <div className="surface-header">
           <div><p className="kicker">РЕЕСТР / LIVE DATA</p><h2>Поручения</h2></div>
           <div className="surface-meta"><span>{filtered.length} показано</span><span>{tasks.filter((task) => task.status === "Снято").length} снято</span></div>
@@ -500,7 +517,7 @@ export default function Home() {
         </article>
         <article className="analytics-card load-analytics">
           <div className="analytics-head"><div><p className="kicker">РАСПРЕДЕЛЕНИЕ НАГРУЗКИ</p><h3>Исполнители</h3></div><span>ACTIVE</span></div>
-          <div className="bar-chart">{ownerCounts.map((item, index) => <div className="bar-row" key={item.label}><span>0{index + 1}</span><b>{item.label}</b><div><i style={{ width: `${item.value / maxOwner * 100}%` }} /></div><strong>{item.value}</strong></div>)}</div>
+          <div className="bar-chart">{ownerCounts.map((item, index) => <button className={`bar-row ${owner !== "Все" && executorSurnames(owner).includes(item.label) ? "active" : ""}`} key={item.label} onClick={() => selectOwnerBySurname(item.label)} aria-label={`Показать поручения: ${item.label}`} aria-pressed={owner !== "Все" && executorSurnames(owner).includes(item.label)}><span>0{index + 1}</span><b>{item.label}</b><div><i style={{ width: `${item.value / maxOwner * 100}%` }} /></div><strong>{item.value}</strong></button>)}</div>
         </article>
       </section>
 
