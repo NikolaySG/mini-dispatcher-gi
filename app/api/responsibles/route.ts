@@ -1,7 +1,10 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { getDb } from "../../../db";
-import { responsibles, tasks } from "../../../db/schema";
+import { appMeta, responsibles, tasks } from "../../../db/schema";
+import { RESPONSIBLE_DIRECTORY_IMPORT_KEY, RESPONSIBLE_DIRECTORY_SOURCE, responsibleDirectoryImport } from "../../data/responsible-directory-import";
 import { syncGoogleSheets } from "../../services/google-sheets-sync";
+
+const DELETED_RESPONSIBLES_KEY = "deleted-responsibles-v1";
 
 function splitPeople(value: string) {
   return value.split(/[;,]/).map((item) => item.trim()).filter(Boolean);
@@ -9,11 +12,13 @@ function splitPeople(value: string) {
 
 async function importTaskOwners() {
   const db = getDb();
-  const [current, taskRows] = await Promise.all([
+  const [current, taskRows, deletedRow] = await Promise.all([
     db.select().from(responsibles),
     db.select({ owner: tasks.owner, ownerEmail: tasks.ownerEmail }).from(tasks),
+    db.select({ value: appMeta.value }).from(appMeta).where(eq(appMeta.key, DELETED_RESPONSIBLES_KEY)).limit(1),
   ]);
   const known = new Set(current.map((item) => item.name.trim().toLocaleLowerCase("ru")));
+  const deleted = new Set<string>(deletedRow[0] ? JSON.parse(deletedRow[0].value) : []);
   const pending: typeof responsibles.$inferInsert[] = [];
 
   for (const task of taskRows) {
@@ -21,7 +26,7 @@ async function importTaskOwners() {
     const emails = splitPeople(task.ownerEmail);
     names.forEach((name, index) => {
       const key = name.toLocaleLowerCase("ru");
-      if (known.has(key)) return;
+      if (known.has(key) || deleted.has(key)) return;
       known.add(key);
       pending.push({
         id: `RESP-${crypto.randomUUID()}`,
@@ -34,9 +39,31 @@ async function importTaskOwners() {
   if (pending.length) await db.insert(responsibles).values(pending).onConflictDoNothing();
 }
 
+async function ensurePhoneDirectoryImport() {
+  const db = getDb();
+  const [completed] = await db.select({ key: appMeta.key }).from(appMeta)
+    .where(eq(appMeta.key, RESPONSIBLE_DIRECTORY_IMPORT_KEY)).limit(1);
+  if (completed) return;
+
+  let updated = 0;
+  for (const item of responsibleDirectoryImport) {
+    const result = await db.update(responsibles).set({
+      position: item.position,
+      phone: item.phone,
+      updatedAt: new Date().toISOString(),
+    }).where(eq(responsibles.name, item.name));
+    if (result.meta.changes) updated += result.meta.changes;
+  }
+  await db.insert(appMeta).values({
+    key: RESPONSIBLE_DIRECTORY_IMPORT_KEY,
+    value: JSON.stringify({ source: RESPONSIBLE_DIRECTORY_SOURCE, exactMatches: responsibleDirectoryImport.length, updated }),
+  }).onConflictDoNothing();
+}
+
 export async function GET() {
   try {
     await importTaskOwners();
+    await ensurePhoneDirectoryImport();
     const rows = await getDb().select().from(responsibles).orderBy(asc(responsibles.name));
     return Response.json({ responsibles: rows });
   } catch (error) {
@@ -60,9 +87,34 @@ export async function POST(request: Request) {
       email: payload.email?.trim() ?? "",
       phone: payload.phone?.trim() ?? "",
     }).returning();
+    const [deletedRow] = await getDb().select({ value: appMeta.value }).from(appMeta).where(eq(appMeta.key, DELETED_RESPONSIBLES_KEY)).limit(1);
+    const deleted = new Set<string>(deletedRow ? JSON.parse(deletedRow.value) : []);
+    deleted.delete(name.toLocaleLowerCase("ru"));
+    await getDb().insert(appMeta).values({ key: DELETED_RESPONSIBLES_KEY, value: JSON.stringify([...deleted]) })
+      .onConflictDoUpdate({ target: appMeta.key, set: { value: JSON.stringify([...deleted]), updatedAt: new Date().toISOString() } });
     return Response.json({ responsible }, { status: 201 });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Не удалось добавить ответственного" }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const id = new URL(request.url).searchParams.get("id");
+    if (!id) return Response.json({ error: "Не указан ID" }, { status: 400 });
+    const db = getDb();
+    const [existing] = await db.select().from(responsibles).where(eq(responsibles.id, id)).limit(1);
+    if (!existing) return Response.json({ error: "Ответственный не найден" }, { status: 404 });
+    const [deletedRow] = await db.select({ value: appMeta.value }).from(appMeta).where(eq(appMeta.key, DELETED_RESPONSIBLES_KEY)).limit(1);
+    const deleted = new Set<string>(deletedRow ? JSON.parse(deletedRow.value) : []);
+    deleted.add(existing.name.toLocaleLowerCase("ru"));
+    await db.insert(appMeta).values({ key: DELETED_RESPONSIBLES_KEY, value: JSON.stringify([...deleted]) })
+      .onConflictDoUpdate({ target: appMeta.key, set: { value: JSON.stringify([...deleted]), updatedAt: new Date().toISOString() } });
+    await db.delete(responsibles).where(eq(responsibles.id, id));
+    const assignedTasks = await db.select({ id: tasks.id }).from(tasks).where(sql`${tasks.owner} LIKE ${`%${existing.name}%`}`);
+    return Response.json({ ok: true, assignedTaskCount: assignedTasks.length });
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : "Не удалось удалить ответственного" }, { status: 500 });
   }
 }
 

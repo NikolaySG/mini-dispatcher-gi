@@ -22,6 +22,10 @@ test("keeps the dispatcher product shell and responsible directory", async () =>
   assert.match(route, /export async function GET/);
   assert.match(route, /export async function POST/);
   assert.match(route, /export async function PATCH/);
+  assert.match(route, /export async function DELETE/);
+  assert.match(page, /deleteResponsible/);
+  assert.match(page, /Назначения в/);
+  assert.match(css, /\.directory-delete/);
 });
 
 test("preserves existing task and Google Sheets workflows", async () => {

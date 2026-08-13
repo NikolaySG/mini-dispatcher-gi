@@ -225,6 +225,27 @@ export default function Home() {
     }
   };
 
+  const deleteResponsible = async (responsible: Responsible) => {
+    const taskCount = tasks.filter((task) => splitPeople(task.owner).includes(responsible.name)).length;
+    const assignmentNote = taskCount ? `\n\nВ ${taskCount} поручениях ФИО останется для сохранения истории.` : "";
+    if (!window.confirm(`Удалить ${responsible.name} из справочника?${assignmentNote}`)) return;
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/responsibles?id=${encodeURIComponent(responsible.id)}`, { method: "DELETE" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error);
+      setResponsibles((current) => current.filter((item) => item.id !== responsible.id));
+      if (selectedResponsibleId === responsible.id) setSelectedResponsibleId("");
+      notify(payload.assignedTaskCount
+        ? `Удалено из справочника. Назначения в ${payload.assignedTaskCount} поручениях сохранены`
+        : "Ответственный удалён из справочника");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Не удалось удалить ответственного");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const saveTask = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
@@ -447,6 +468,7 @@ export default function Home() {
         adminMode={adminMode}
         onCreate={openResponsibleCreate}
         onEdit={openResponsibleEdit}
+        onDelete={deleteResponsible}
       />}
 
       <footer><span>MINI DISPATCHER / GI</span><span>Данные хранятся в D1 и синхронизируются с Google Sheets автоматически</span></footer>
@@ -506,9 +528,9 @@ function TaskModal({ mode, draft, setDraft, responsibles, onClose, onSubmit, bus
   );
 }
 
-function ResponsibleDirectory({ responsibles, tasks, adminMode, onCreate, onEdit }: {
+function ResponsibleDirectory({ responsibles, tasks, adminMode, onCreate, onEdit, onDelete }: {
   responsibles: Responsible[]; tasks: Task[]; adminMode: boolean;
-  onCreate: () => void; onEdit: (responsible: Responsible) => void;
+  onCreate: () => void; onEdit: (responsible: Responsible) => void; onDelete: (responsible: Responsible) => void;
 }) {
   return <section className="directory-surface">
     <div className="directory-head">
@@ -529,7 +551,7 @@ function ResponsibleDirectory({ responsibles, tasks, adminMode, onCreate, onEdit
           <span>{responsible.position || "Не указана"}</span>
           <span className="directory-contacts"><b>{responsible.email || "Email не указан"}</b><small>{responsible.phone || "Телефон не указан"}</small></span>
           <span className="directory-task-count"><strong>{taskCount}</strong><small>активных назначений</small></span>
-          <button className="ghost-button" disabled={!adminMode} onClick={() => onEdit(responsible)}>Изменить</button>
+          <span className="directory-actions"><button className="ghost-button" disabled={!adminMode} onClick={() => onEdit(responsible)}>Изменить</button><button className="directory-delete" disabled={!adminMode} onClick={() => onDelete(responsible)}>Удалить</button></span>
         </div>;
       })}
       {!responsibles.length && <div className="directory-empty">Справочник пока пуст. Добавьте первого ответственного.</div>}
