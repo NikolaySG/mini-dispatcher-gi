@@ -15,6 +15,13 @@
       "when": 1785486524612,
       "tag": "0001_pretty_starhawk",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786615195521,
+      "tag": "0002_acoustic_captain_cross",
+      "breakpoints": true
     }
   ]
 }

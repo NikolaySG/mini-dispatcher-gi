@@ -26,7 +26,8 @@ export function createTaskMailto(task: ExportableTask) {
 С уважением,
 Главный инженер`;
 
-  return `mailto:${task.ownerEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  const recipients = task.ownerEmail.split(/[;,]/).map((item) => item.trim()).filter(Boolean).join(",");
+  return `mailto:${recipients}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
 // Browser adapter. It can later be replaced by an API export endpoint.

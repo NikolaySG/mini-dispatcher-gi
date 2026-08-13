@@ -22,3 +22,12 @@ export const appMeta = sqliteTable("app_meta", {
   value: text("value").notNull(),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const responsibles = sqliteTable("responsibles", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  position: text("position").notNull().default(""),
+  email: text("email").notNull().default(""),
+  phone: text("phone").notNull().default(""),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
