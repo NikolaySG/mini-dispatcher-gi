@@ -2,7 +2,7 @@ import { asc, eq, sql } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { appMeta, responsibles, tasks } from "../../../db/schema";
 import { RESPONSIBLE_DIRECTORY_IMPORT_KEY, RESPONSIBLE_DIRECTORY_SOURCE, responsibleDirectoryImport } from "../../data/responsible-directory-import";
-import { syncGoogleSheets } from "../../services/google-sheets-sync";
+import { enqueueGoogleSync, getGoogleSyncStatus, scheduleGoogleSheetsSync } from "../../services/google-sheets-sync";
 
 const DELETED_RESPONSIBLES_KEY = "deleted-responsibles-v1";
 
@@ -139,23 +139,29 @@ export async function PATCH(request: Request) {
 
     const directoryRows = await getDb().select().from(responsibles);
     const taskRows = await getDb().select().from(tasks);
+    const changedTasks: Array<typeof tasks.$inferSelect> = [];
     for (const task of taskRows) {
       const names = splitPeople(task.owner);
       const ownerIndex = names.findIndex((item) => item.toLocaleLowerCase("ru") === existing.name.toLocaleLowerCase("ru"));
       if (ownerIndex < 0) continue;
       names[ownerIndex] = responsible.name;
       const emails = names.map((person) => directoryRows.find((item) => item.name === person)?.email ?? "").filter(Boolean);
+      const updatedAt = new Date().toISOString();
+      const owner = names.join("; ");
+      const ownerEmail = emails.join("; ");
       await getDb().update(tasks).set({
-        owner: names.join("; "),
-        ownerEmail: emails.join("; "),
-        updatedAt: new Date().toISOString(),
+        owner,
+        ownerEmail,
+        updatedAt,
       }).where(eq(tasks.id, task.id));
+      changedTasks.push({ ...task, owner, ownerEmail, updatedAt });
     }
-    const syncedRows = await getDb().select().from(tasks).orderBy(asc(tasks.id));
-    const googleSync = await syncGoogleSheets({ action: "replaceAll", tasks: syncedRows.map(({ historyJson, ...task }) => ({
-      ...task,
-      history: JSON.parse(historyJson),
-    })) });
+    await Promise.all(changedTasks.map(({ historyJson, ...task }) => enqueueGoogleSync({
+      action: "upsert",
+      task: { ...task, history: JSON.parse(historyJson) },
+    })));
+    if (changedTasks.length) scheduleGoogleSheetsSync();
+    const googleSync = await getGoogleSyncStatus();
     return Response.json({ responsible, googleSync });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Не удалось сохранить изменения" }, { status: 500 });

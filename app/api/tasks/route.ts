@@ -2,7 +2,7 @@ import { asc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { appMeta, tasks } from "../../../db/schema";
 import { JOURNAL_IMPORT_KEY, JOURNAL_SOURCE, journalTasks } from "../../data/journal-import";
-import { syncGoogleSheets } from "../../services/google-sheets-sync";
+import { enqueueGoogleSync, getGoogleSyncStatus, scheduleGoogleSheetsSync } from "../../services/google-sheets-sync";
 
 type HistoryEvent = { date: string; title: string; text: string };
 
@@ -85,7 +85,7 @@ export async function GET() {
     await ensureJournalImport();
     const rows = await getDb().select().from(tasks).orderBy(asc(tasks.id));
     const serialized = rows.map(serialize);
-    const googleSync = await syncGoogleSheets({ action: "replaceAll", tasks: serialized });
+    const googleSync = await getGoogleSyncStatus();
     return Response.json({ tasks: serialized, googleSync });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Не удалось загрузить поручения" }, { status: 500 });
@@ -116,7 +116,9 @@ export async function POST(request: Request) {
       historyJson: JSON.stringify(history),
     }).returning();
     const task = serialize(row);
-    const googleSync = await syncGoogleSheets({ action: "upsert", task });
+    await enqueueGoogleSync({ action: "upsert", task });
+    scheduleGoogleSheetsSync();
+    const googleSync = await getGoogleSyncStatus();
     return Response.json({ task, googleSync }, { status: 201 });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Не удалось создать поручение" }, { status: 500 });
@@ -159,7 +161,9 @@ export async function PATCH(request: Request) {
       updatedAt: new Date().toISOString(),
     }).where(eq(tasks.id, payload.id)).returning();
     const task = serialize(row);
-    const googleSync = await syncGoogleSheets({ action: "upsert", task });
+    await enqueueGoogleSync({ action: "upsert", task });
+    scheduleGoogleSheetsSync();
+    const googleSync = await getGoogleSyncStatus();
     return Response.json({ task, googleSync });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Не удалось обновить поручение" }, { status: 500 });
@@ -171,7 +175,9 @@ export async function DELETE(request: Request) {
     const id = new URL(request.url).searchParams.get("id");
     if (!id) return Response.json({ error: "Не указан ID" }, { status: 400 });
     await getDb().delete(tasks).where(eq(tasks.id, id));
-    const googleSync = await syncGoogleSheets({ action: "delete", id });
+    await enqueueGoogleSync({ action: "delete", id });
+    scheduleGoogleSheetsSync();
+    const googleSync = await getGoogleSyncStatus();
     return Response.json({ ok: true, googleSync });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Не удалось удалить поручение" }, { status: 500 });

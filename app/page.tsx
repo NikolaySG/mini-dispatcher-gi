@@ -19,6 +19,7 @@ type Task = {
 type TaskDraft = Omit<Task, "id" | "created" | "history">;
 type Responsible = { id: string; name: string; position: string; email: string; phone: string; updatedAt?: string };
 type ResponsibleDraft = Omit<Responsible, "id" | "updatedAt">;
+type GoogleSyncInfo = { state: "online" | "pending" | "unavailable"; pending: number; lastSync: string | null; lastError: string | null };
 
 const statuses: Status[] = ["В работе", "На проверке", "Требует уточнения", "Просрочено", "Выполнено", "Снято"];
 const priorities: Priority[] = ["Критический", "Высокий", "Средний", "Низкий"];
@@ -56,7 +57,8 @@ export default function Home() {
   const [runtimeNow, setRuntimeNow] = useState(0);
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [connectionState, setConnectionState] = useState<"loading" | "online" | "error">("loading");
-  const [googleSync, setGoogleSync] = useState<"online" | "unavailable">("unavailable");
+  const [googleSync, setGoogleSync] = useState<GoogleSyncInfo>({ state: "unavailable", pending: 0, lastSync: null, lastError: null });
+  const [syncBusy, setSyncBusy] = useState(false);
   const [adminMode, setAdminMode] = useState(true);
   const [meetingMode, setMeetingMode] = useState(false);
   const [highlightedId, setHighlightedId] = useState("");
@@ -91,7 +93,7 @@ export default function Home() {
         setSelectedResponsibleId(responsiblePayload.responsibles[0]?.id ?? "");
         setLastSync(new Date());
         setConnectionState("online");
-        setGoogleSync(taskPayload.googleSync === "online" ? "online" : "unavailable");
+        setGoogleSync(normalizeGoogleSync(taskPayload.googleSync));
       })
       .catch((error) => {
         setConnectionState("error");
@@ -110,6 +112,36 @@ export default function Home() {
     const timer = window.setInterval(updateClock, 30000);
     return () => { window.clearTimeout(initial); window.clearInterval(timer); };
   }, []);
+
+  useEffect(() => {
+    const refreshSync = () => fetch("/api/sync")
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload) => { if (payload) setGoogleSync(normalizeGoogleSync(payload)); })
+      .catch(() => undefined);
+    const timer = window.setInterval(refreshSync, 15000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const syncNow = async () => {
+    setSyncBusy(true);
+    try {
+      const response = await fetch("/api/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force: true }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error);
+      const next = normalizeGoogleSync(payload);
+      setGoogleSync(next);
+      setLastSync(new Date());
+      notify(next.state === "online" ? "Google Sheets синхронизирован" : "Google Sheets недоступен · изменения сохранены в очереди");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Не удалось синхронизировать Google Sheets");
+    } finally {
+      setSyncBusy(false);
+    }
+  };
 
   const selected = tasks.find((task) => task.id === selectedId) ?? tasks[0];
   const activeTasks = tasks.filter((task) => task.status !== "Снято");
@@ -256,7 +288,7 @@ export default function Home() {
         const taskPayload = await taskResponse.json();
         if (!taskResponse.ok) throw new Error(taskPayload.error);
         setTasks(taskPayload.tasks);
-        setGoogleSync(taskPayload.googleSync === "online" ? "online" : "unavailable");
+        setGoogleSync(normalizeGoogleSync(taskPayload.googleSync));
         setLastSync(new Date());
       }
       setSelectedResponsibleId(payload.responsible.id);
@@ -310,12 +342,13 @@ export default function Home() {
         : current.map((task) => task.id === payload.task.id ? payload.task : task));
       setSelectedId(payload.task.id);
       setLastSync(new Date());
-      setGoogleSync(payload.googleSync === "online" ? "online" : "unavailable");
+      const sync = normalizeGoogleSync(payload.googleSync);
+      setGoogleSync(sync);
       highlightTask(payload.task.id);
       setModal(null);
-      notify(payload.googleSync === "online"
-        ? modal === "create" ? "Поручение создано и записано в Google Sheets" : "Изменения сохранены в Google Sheets"
-        : "Сохранено в базе. Google Sheets временно недоступен");
+      notify(sync.state === "pending"
+        ? "Сохранено в базе · Google Sheets синхронизируется"
+        : sync.state === "online" ? "Сохранено в базе и Google Sheets" : "Сохранено в базе · Google Sheets временно недоступен");
     } catch (error) {
       notify(error instanceof Error ? error.message : "Не удалось сохранить");
     } finally {
@@ -335,11 +368,12 @@ export default function Home() {
       if (!response.ok) throw new Error(payload.error);
       setTasks((current) => current.map((task) => task.id === selected.id ? payload.task : task));
       setLastSync(new Date());
-      setGoogleSync(payload.googleSync === "online" ? "online" : "unavailable");
+      const sync = normalizeGoogleSync(payload.googleSync);
+      setGoogleSync(sync);
       highlightTask(selected.id);
-      notify(payload.googleSync === "online"
+      notify(sync.state === "pending" ? "Статус сохранён · Google Sheets синхронизируется" : sync.state === "online"
         ? nextStatus === "Выполнено" ? "Поручение выполнено · Google Sheets обновлён" : nextStatus === "Снято" ? "Поручение снято · Google Sheets обновлён" : "Статус обновлён в Google Sheets"
-        : "Статус сохранён в базе. Google Sheets временно недоступен");
+        : "Статус сохранён в базе · Google Sheets временно недоступен");
     } catch (error) {
       notify(error instanceof Error ? error.message : "Не удалось изменить статус");
     } finally {
@@ -357,8 +391,9 @@ export default function Home() {
       setTasks((current) => current.filter((task) => task.id !== selected.id));
       setSelectedId(tasks.find((task) => task.id !== selected.id)?.id ?? "");
       setLastSync(new Date());
-      setGoogleSync(payload.googleSync === "online" ? "online" : "unavailable");
-      notify(payload.googleSync === "online" ? "Поручение удалено из базы и Google Sheets" : "Удалено из базы. Google Sheets временно недоступен");
+      const sync = normalizeGoogleSync(payload.googleSync);
+      setGoogleSync(sync);
+      notify(sync.state === "pending" ? "Удалено из базы · Google Sheets синхронизируется" : sync.state === "online" ? "Поручение удалено из базы и Google Sheets" : "Удалено из базы · Google Sheets временно недоступен");
     } catch (error) {
       notify(error instanceof Error ? error.message : "Не удалось удалить");
     } finally {
@@ -388,7 +423,8 @@ export default function Home() {
         <div className={`system-status ${connectionState}`}><i /><span>Система</span><strong>{connectionState === "online" ? "Работает" : connectionState === "loading" ? "Подключение" : "Ошибка связи"}</strong></div>
         <div><span>Дата и время</span><strong>{clock ? formatSystemTime(clock) : "Синхронизация часов"}</strong></div>
         <div><span>Последняя синхронизация</span><strong>{lastSync ? formatSystemTime(lastSync) : "Ожидание данных"}</strong></div>
-        <div><span>Источник</span><strong>{connectionState === "online" ? googleSync === "online" ? "D1 + Google Sheets" : "D1 · Sheets недоступен" : "D1 · проверка"}</strong></div>
+        <div><span>Источник</span><strong>{connectionState === "online" ? googleSync.state === "online" ? "D1 + Google Sheets" : googleSync.state === "pending" ? `D1 · Sheets: ${googleSync.pending} в очереди` : "D1 · Sheets недоступен" : "D1 · проверка"}</strong></div>
+        <button className={`sync-button ${googleSync.state}`} disabled={syncBusy} onClick={syncNow} title={googleSync.lastError ?? "Принудительная полная синхронизация с Google Sheets"}><i />{syncBusy ? "Синхронизация…" : googleSync.state === "pending" ? `Синхронизировать (${googleSync.pending})` : "Синхронизировать"}</button>
         <button className="meeting-button" onClick={() => setMeetingMode(true)}><i />Совещание</button>
         <button className={adminMode ? "admin active" : "admin"} onClick={() => setAdminMode((current) => !current)} aria-pressed={adminMode}>
           <i />{adminMode ? "Администратор" : "Просмотр"}
@@ -687,6 +723,19 @@ function executorSurnames(owner: string) {
 
 function splitPeople(value: string) {
   return value.split(/[;,]/).map((item) => item.trim()).filter(Boolean);
+}
+
+function normalizeGoogleSync(value: unknown): GoogleSyncInfo {
+  if (value && typeof value === "object" && "state" in value) {
+    const sync = value as Partial<GoogleSyncInfo>;
+    return {
+      state: sync.state === "online" || sync.state === "pending" ? sync.state : "unavailable",
+      pending: typeof sync.pending === "number" ? sync.pending : 0,
+      lastSync: typeof sync.lastSync === "string" ? sync.lastSync : null,
+      lastError: typeof sync.lastError === "string" ? sync.lastError : null,
+    };
+  }
+  return { state: value === "online" ? "online" : "unavailable", pending: 0, lastSync: null, lastError: null };
 }
 
 function initials(name: string) {
