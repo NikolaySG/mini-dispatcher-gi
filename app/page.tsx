@@ -183,6 +183,11 @@ export default function Home() {
     : 0;
   const attentionTone = attentionCount === 0 ? "#37e6a1" : attentionShare > 50 ? "#ff5263" : "#ffc857";
   const criticalCount = activeTasks.filter((task) => task.priority === "Критический" && task.status !== "Выполнено").length;
+  const week = getCurrentWeek(runtimeNow);
+  const openTasks = tasks.filter((task) => task.status !== "Выполнено" && task.status !== "Снято");
+  const weekDueCount = openTasks.filter((task) => task.due && task.due >= week.today && task.due <= week.end).length;
+  const overdueCount = openTasks.filter((task) => task.due && task.due < week.today).length;
+  const reviewCount = openTasks.filter((task) => task.status === "На проверке" || task.status === "Требует уточнения").length;
   const nearDueCount = activeTasks.filter((task) => {
     if (!task.due || task.status === "Выполнено") return false;
     const days = Math.ceil((new Date(`${task.due}T23:59:59`).getTime() - runtimeNow) / 86400000);
@@ -404,7 +409,7 @@ export default function Home() {
           <p>Сроки, ответственные, отклонения и последние изменения — в одном рабочем контуре.</p>
           <div className="assistant-brief">
             <span className="brief-indicator"><i /></span>
-            <div><small>ТЕКУЩИЙ ФОКУС</small><strong>{statusCounts.find((item) => item.label === "Просрочено")?.value ?? 0} просрочено · {statusCounts.find((item) => item.label === "Требует уточнения")?.value ?? 0} уточнить · {attentionCount} требуют внимания</strong></div>
+            <div><small>ТЕКУЩАЯ НЕДЕЛЯ · {runtimeNow ? week.label : "расчёт периода"}</small><strong>сроков до воскресенья: {weekDueCount} · просрочено: {overdueCount} · требуют решения: {reviewCount}</strong></div>
             <b>LIVE</b>
           </div>
         </div>
@@ -693,6 +698,22 @@ function formatSystemTime(date: Date) {
     day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
     timeZone: "Europe/Saratov",
   }).format(date).replace(",", " ·");
+}
+
+function getCurrentWeek(timestamp: number) {
+  const today = new Date(timestamp || 0);
+  today.setHours(12, 0, 0, 0);
+  const dayFromMonday = (today.getDay() + 6) % 7;
+  const start = new Date(today);
+  start.setDate(today.getDate() - dayFromMonday);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  const dateKey = (date: Date) => [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
+  const month = new Intl.DateTimeFormat("ru-RU", { month: "long" }).format(end);
+  const label = start.getMonth() === end.getMonth()
+    ? `${start.getDate()}–${end.getDate()} ${month}`
+    : `${start.getDate()} ${new Intl.DateTimeFormat("ru-RU", { month: "long" }).format(start)} — ${end.getDate()} ${month}`;
+  return { today: dateKey(today), end: dateKey(end), label };
 }
 
 function metricState(label: string) {
