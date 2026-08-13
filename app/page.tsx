@@ -5,7 +5,7 @@ import { CommandCore } from "./components/command-core";
 import { DeadlineIndicator, getDeadlineState } from "./components/deadline-indicator";
 import { OperationsPanels } from "./components/operations-panels";
 import { MeetingMode } from "./components/meeting-mode";
-import { createTaskMailto, downloadTasksCsv } from "./services/task-exchange";
+import { createTaskMailto, createTasksMailto, downloadTasksCsv, getTaskRecipients } from "./services/task-exchange";
 import { formatStoredDate, getDeadlineTransfers } from "./services/deadline-history";
 
 type Status = "Выполнено" | "В работе" | "Просрочено" | "На проверке" | "Требует уточнения" | "Снято";
@@ -65,6 +65,7 @@ export default function Home() {
   const [responsibleModal, setResponsibleModal] = useState<"create" | "edit" | null>(null);
   const [responsibleDraft, setResponsibleDraft] = useState<ResponsibleDraft>(emptyResponsibleDraft);
   const [selectedResponsibleId, setSelectedResponsibleId] = useState("");
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
 
   const notify = (message: string) => {
     setToast(message);
@@ -124,6 +125,26 @@ export default function Home() {
       && dueMatch
       && (!q || `${task.id} ${task.title} ${task.description} ${task.project}`.toLowerCase().includes(q));
   }), [tasks, owner, status, priority, due, query, runtimeNow]);
+  const selectedTasks = tasks.filter((task) => selectedTaskIds.has(task.id));
+  const selectedRecipients = getTaskRecipients(selectedTasks);
+  const allFilteredSelected = filtered.length > 0 && filtered.every((task) => selectedTaskIds.has(task.id));
+
+  const toggleTaskSelection = (id: string) => {
+    setSelectedTaskIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleFilteredSelection = () => {
+    setSelectedTaskIds((current) => {
+      const next = new Set(current);
+      if (allFilteredSelected) filtered.forEach((task) => next.delete(task.id));
+      else filtered.forEach((task) => next.add(task.id));
+      return next;
+    });
+  };
 
   const statusCounts = statuses.map((label) => ({
     label, value: tasks.filter((task) => task.status === label).length,
@@ -395,19 +416,35 @@ export default function Home() {
           <Filter value={due} onChange={setDue} options={["Без срока", "Просрочено", "7 дней", "Позже"]} label="Срок" />
           <button className="clear-filters" onClick={() => { setOwner("Все"); setStatus("Все"); setPriority("Все"); setDue("Все"); setQuery(""); }}>Сброс</button>
         </div>
+        <div className="selection-toolbar" aria-label="Работа с выборкой поручений">
+          <button className="selection-toggle" onClick={toggleFilteredSelection} disabled={!filtered.length}>
+            {allFilteredSelected ? "Снять выбор с показанных" : "Выбрать все показанные"}
+          </button>
+          <span><strong>{selectedTasks.length}</strong> выбрано · <strong>{selectedRecipients.length}</strong> адресатов</span>
+          {selectedTasks.length > 0 && selectedRecipients.length > 0
+            ? <a href={createTasksMailto(selectedTasks)}>✉ Подготовить письмо участникам</a>
+            : <button className="selection-mail-disabled" disabled title={selectedTasks.length ? "У выбранных поручений не заполнены адреса электронной почты" : "Сначала выберите поручения"}>✉ Подготовить письмо участникам</button>}
+          {selectedTasks.length > 0 && <button className="selection-clear" onClick={() => setSelectedTaskIds(new Set())}>Очистить выборку</button>}
+        </div>
 
         <div className="registry-grid">
           <div className="task-list">
-            <div className="task-list-head"><span>ПОРУЧЕНИЕ</span><span>ОТВЕТСТВЕННЫЙ</span><span>ИСТОРИЯ СРОКА</span><span>НОВАЯ ПЛАНОВАЯ</span><span>СТАТУС</span></div>
+            <div className="task-list-head-wrap">
+              <label className="row-selector" title="Выбрать все показанные"><input type="checkbox" checked={allFilteredSelected} onChange={toggleFilteredSelection} aria-label="Выбрать все показанные поручения" /><i /></label>
+              <div className="task-list-head"><span>ПОРУЧЕНИЕ</span><span>ОТВЕТСТВЕННЫЙ</span><span>ИСТОРИЯ СРОКА</span><span>НОВАЯ ПЛАНОВАЯ</span><span>СТАТУС</span></div>
+            </div>
             {loading && <div className="loading-state"><i /><span>Поднимаем оперативную картину…</span></div>}
             {!loading && filtered.map((task) => (
-              <button aria-current={selected?.id === task.id ? "true" : undefined} className={`task-row deadline-${getDeadlineState(task.due, task.status, runtimeNow)} ${task.priority === "Критический" && task.status !== "Выполнено" ? "critical-row" : ""} ${highlightedId === task.id ? "recently-updated" : ""} ${selected?.id === task.id ? "selected" : ""}`} key={task.id} onClick={() => setSelectedId(task.id)}>
-                <span className="task-main"><small>{task.id} · {task.project}</small><strong>{task.title}</strong><em className={`priority-dot ${task.priority.toLowerCase()}`}>{task.priority}</em></span>
-                <span className="owner-cell"><i>{initials(splitPeople(task.owner)[0] ?? task.owner)}</i><b>{splitPeople(task.owner).join(", ")}</b>{splitPeople(task.owner).length > 1 && <em>+{splitPeople(task.owner).length - 1}</em>}</span>
-                <DeadlineHistory task={task} />
-                <DeadlineIndicator due={task.due} status={task.status} now={runtimeNow} />
-                <span><StatusBadge status={task.status} /></span>
-              </button>
+              <div className={`task-row-wrap ${selectedTaskIds.has(task.id) ? "checked" : ""}`} key={task.id}>
+                <label className="row-selector" title="Добавить в выборку"><input type="checkbox" checked={selectedTaskIds.has(task.id)} onChange={() => toggleTaskSelection(task.id)} aria-label={`Выбрать поручение ${task.id}`} /><i /></label>
+                <button aria-current={selected?.id === task.id ? "true" : undefined} className={`task-row deadline-${getDeadlineState(task.due, task.status, runtimeNow)} ${task.priority === "Критический" && task.status !== "Выполнено" ? "critical-row" : ""} ${highlightedId === task.id ? "recently-updated" : ""} ${selected?.id === task.id ? "selected" : ""}`} onClick={() => setSelectedId(task.id)}>
+                  <span className="task-main"><small>{task.id} · {task.project}</small><strong>{task.title}</strong><em className={`priority-dot ${task.priority.toLowerCase()}`}>{task.priority}</em></span>
+                  <span className="owner-cell"><i>{initials(splitPeople(task.owner)[0] ?? task.owner)}</i><b>{splitPeople(task.owner).join(", ")}</b>{splitPeople(task.owner).length > 1 && <em>+{splitPeople(task.owner).length - 1}</em>}</span>
+                  <DeadlineHistory task={task} />
+                  <DeadlineIndicator due={task.due} status={task.status} now={runtimeNow} />
+                  <span><StatusBadge status={task.status} /></span>
+                </button>
+              </div>
             ))}
             {!loading && !filtered.length && <div className="empty-state">Сигналов нет. Либо всё хорошо, либо фильтры перестарались.</div>}
           </div>

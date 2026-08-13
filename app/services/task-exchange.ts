@@ -30,6 +30,33 @@ export function createTaskMailto(task: ExportableTask) {
   return `mailto:${recipients}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
+export function getTaskRecipients(tasks: ExportableTask[]) {
+  return [...new Set(tasks.flatMap((task) => task.ownerEmail
+    .split(/[;,]/)
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean)))];
+}
+
+export function createTasksMailto(tasks: ExportableTask[]) {
+  const recipients = getTaskRecipients(tasks);
+  const subject = `Контроль выбранных поручений (${tasks.length})`;
+  const taskList = tasks.map((task, index) => `${index + 1}. ${task.id} — ${task.title}
+Ответственные: ${task.owner}.
+Срок: ${formatDate(task.due)}. Статус: ${task.status}.`).join("\n\n");
+  const body = `Добрый день!
+
+Направляю выборку поручений для контроля исполнения и актуализации статуса.
+
+${taskList}
+
+Просьба предоставить актуальную информацию по поручениям, находящимся в вашей зоне ответственности.
+
+С уважением,
+Главный инженер`;
+
+  return `mailto:${recipients.join(",")}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
 // Browser adapter. It can later be replaced by an API export endpoint.
 export function downloadTasksCsv(rows: ExportableTask[], suffix: string) {
   const headers = ["ID", "Поручение", "Ответственный", "Статус", "Приоритет", "Срок", "Объект"];
