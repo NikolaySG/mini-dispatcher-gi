@@ -33,8 +33,8 @@
 }
 
 * { box-sizing: border-box; }
-html { background: var(--void); scroll-behavior: smooth; }
-body { margin: 0; background: var(--void); color: var(--ink); font-family: var(--font-geist-sans), Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-variant-numeric: tabular-nums; }
+html { background: var(--void); scroll-behavior: smooth; overflow-x: clip; }
+body { margin: 0; background: var(--void); color: var(--ink); font-family: var(--font-geist-sans), Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-variant-numeric: tabular-nums; overflow-x: clip; }
 button, input, select, textarea { font: inherit; }
 button, a, select { -webkit-tap-highlight-color: transparent; }
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible {
@@ -43,7 +43,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 button:disabled { opacity: .45; cursor: not-allowed; }
 
 .app-shell {
-  min-height: 100vh; position: relative; isolation: isolate; overflow: hidden; padding-bottom: 24px;
+  min-height: 100vh; position: relative; isolation: isolate; overflow: visible; padding-bottom: 24px;
   background:
     linear-gradient(rgba(86, 216, 255, .025) 1px, transparent 1px),
     linear-gradient(90deg, rgba(86, 216, 255, .025) 1px, transparent 1px),
@@ -509,6 +509,7 @@ footer { max-width: 1488px; margin: 0 auto; padding: 0 2px 20px; display: flex; 
   backdrop-filter: blur(18px);
   overflow: hidden;
 }
+.control-surface { overflow: visible; }
 .control-surface::before,
 .analytics-card::before,
 .analytics-card::after { content: none; }
