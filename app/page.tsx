@@ -451,35 +451,39 @@ export default function Home() {
 
           <aside className="task-inspector">
             {selected ? <>
-              <div className="inspector-head">
-                <div><p className="kicker">{selected.id}</p><h3>{selected.title}</h3></div>
-                <StatusBadge status={selected.status} />
+              <div className="inspector-fixed">
+                <div className="inspector-head">
+                  <div><p className="kicker">{selected.id}</p><h3>{selected.title}</h3></div>
+                  <StatusBadge status={selected.status} />
+                </div>
+                <div className="inspector-actions">
+                  <button className="action primary-action" disabled={!adminMode} onClick={openEdit}>✎ Изменить</button>
+                  <button className="action success-action" disabled={!adminMode || busy || selected.status === "Выполнено"} onClick={() => quickStatus("Выполнено")}>✓ Выполнено</button>
+                  <button className="action remove-action" disabled={!adminMode || busy || selected.status === "Снято"} onClick={() => quickStatus("Снято")}>⊘ Снять</button>
+                  <button className="action delete-action" disabled={!adminMode || busy} onClick={deleteTask}>⌫ Удалить</button>
+                </div>
               </div>
-              <p className="task-description">{selected.description || "Описание не заполнено."}</p>
-              <div className="inspector-actions">
-                <button className="action primary-action" disabled={!adminMode} onClick={openEdit}>✎ Изменить</button>
-                <button className="action success-action" disabled={!adminMode || busy || selected.status === "Выполнено"} onClick={() => quickStatus("Выполнено")}>✓ Выполнено</button>
-                <button className="action remove-action" disabled={!adminMode || busy || selected.status === "Снято"} onClick={() => quickStatus("Снято")}>⊘ Снять</button>
-                <button className="action delete-action" disabled={!adminMode || busy} onClick={deleteTask}>⌫ Удалить</button>
-              </div>
-              <div className="detail-matrix">
-                <div><span>Ответственные</span><strong>{splitPeople(selected.owner).join(", ")}</strong></div>
-                <div><span>Новая плановая дата</span><strong>{formatDate(selected.due)}</strong></div>
-                <div><span>Приоритет</span><strong>{selected.priority}</strong></div>
-                <div><span>Объект</span><strong>{selected.project}</strong></div>
-                <div><span>Постановщик</span><strong>{selected.author}</strong></div>
-                <div><span>Создано</span><strong>{formatDate(selected.created)}</strong></div>
-              </div>
-              <div className="deadline-history-detail">
-                <div className="history-title"><span>ИСТОРИЯ СРОКА</span><b>{getDeadlineTransfers(selected.history).length}</b></div>
-                <DeadlineHistory task={selected} detailed />
-              </div>
-              <a className="mail-link" href={createTaskMailto(selected)}>↗ Сформировать письмо исполнителю</a>
-              <div className="history-block">
-                <div className="history-title"><span>ИСТОРИЯ</span><b>{selected.history.length}</b></div>
-                {selected.history.map((event, index) => (
-                  <div className="history-event" key={`${event.date}-${index}`}><i className={index === 0 ? "current" : ""} /><div><time>{event.date}</time><strong>{event.title}</strong><p>{event.text}</p></div></div>
-                ))}
+              <div className="inspector-scroll" key={selected.id}>
+                <p className="task-description">{selected.description || "Описание не заполнено."}</p>
+                <div className="detail-matrix">
+                  <div><span>Ответственные</span><strong>{splitPeople(selected.owner).join(", ")}</strong></div>
+                  <div><span>Новая плановая дата</span><strong>{formatDate(selected.due)}</strong></div>
+                  <div><span>Приоритет</span><strong>{selected.priority}</strong></div>
+                  <div><span>Объект</span><strong>{selected.project}</strong></div>
+                  <div><span>Постановщик</span><strong>{selected.author}</strong></div>
+                  <div><span>Создано</span><strong>{formatDate(selected.created)}</strong></div>
+                </div>
+                <details className="deadline-history-detail inspector-section" open>
+                  <summary className="history-title"><span>ИСТОРИЯ СРОКА</span><b>{getDeadlineTransfers(selected.history).length}</b></summary>
+                  <DeadlineHistory task={selected} detailed />
+                </details>
+                <a className="mail-link" href={createTaskMailto(selected)}>↗ Сформировать письмо исполнителю</a>
+                <details className="history-block inspector-section">
+                  <summary className="history-title"><span>ИСТОРИЯ</span><b>{selected.history.length}</b></summary>
+                  {selected.history.map((event, index) => (
+                    <div className="history-event" key={`${event.date}-${index}`}><i className={index === 0 ? "current" : ""} /><div><time>{event.date}</time><strong>{event.title}</strong><p>{event.text}</p></div></div>
+                  ))}
+                </details>
               </div>
             </> : <div className="empty-inspector">Выберите поручение</div>}
           </aside>
