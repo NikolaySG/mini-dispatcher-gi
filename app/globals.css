@@ -289,12 +289,15 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 
 .task-inspector {
   position: sticky;
-  top: 16px;
+  top: 50vh;
+  transform: translateY(-50%);
   align-self: start;
   max-height: calc(100vh - 32px);
   padding: 25px;
   background: radial-gradient(circle at 100% 0, rgba(60,200,255,.08), transparent 38%), rgba(8,18,29,.96);
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   scrollbar-color: rgba(110,234,255,.42) rgba(133,170,202,.08);
   scrollbar-width: thin;
 }
@@ -395,7 +398,7 @@ footer { max-width: 1488px; margin: 0 auto; padding: 0 2px 20px; display: flex; 
   .meeting-summary { grid-template-columns: repeat(3, 1fr); }.meeting-content { grid-template-columns: 1fr; }
   .hero-grid { grid-template-columns: 1.25fr .75fr; }.risk-radar { display: none; }.metric-deck { grid-template-columns: repeat(3,1fr); }
   .filter-rail { grid-template-columns: repeat(3, 1fr); }.search-control { grid-column: 1 / -1; }
-  .registry-grid { grid-template-columns: 1fr; }.task-list { border-right: 0; border-bottom: 1px solid var(--line); }.task-inspector { position: relative; top: auto; max-height: none; min-height: 520px; }
+  .registry-grid { grid-template-columns: 1fr; }.task-list { border-right: 0; border-bottom: 1px solid var(--line); }.task-inspector { position: relative; top: auto; transform: none; max-height: none; min-height: 520px; }
   .workspace-tabs, .directory-surface { margin-left: 26px; margin-right: 26px; }.directory-row { grid-template-columns: 1.2fr 1fr 1fr 90px 180px; }
 }
 @media (max-width: 780px) {
