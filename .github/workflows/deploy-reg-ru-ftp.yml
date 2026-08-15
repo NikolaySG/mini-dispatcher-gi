@@ -1,0 +1,33 @@
+name: Deploy test page to REG.RU
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reg-ru-ftp-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Publish test page over FTP
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Deploy test page
+        uses: SamKirkland/FTP-Deploy-Action@v4.4.0
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftp
+          port: 21
+          local-dir: ./ftp-test/
+          server-dir: ${{ secrets.FTP_SERVER_DIR }}
+          log-level: standard
