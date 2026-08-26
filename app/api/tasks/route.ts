@@ -16,6 +16,16 @@ function nowRu() {
   }).format(new Date()).replace(",", "");
 }
 
+function todaySaratov() {
+  return new Intl.DateTimeFormat("en-CA", {
+    year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Europe/Saratov",
+  }).format(new Date());
+}
+
+function validCompletionDate(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(new Date(`${value}T12:00:00+04:00`).getTime());
+}
+
 function parseHistory(value: string): HistoryEvent[] {
   try {
     const parsed = JSON.parse(value);
@@ -98,6 +108,11 @@ export async function POST(request: Request) {
     if (!payload.title?.trim() || !payload.owner?.trim() || !payload.due) {
       return Response.json({ error: "Заполните название, ответственного и срок" }, { status: 400 });
     }
+    const nextStatus = payload.status ?? "В работе";
+    const nextCompletedAt = nextStatus === "Выполнено" ? payload.completedAt?.trim() ?? "" : "";
+    if (nextStatus === "Выполнено" && (!validCompletionDate(nextCompletedAt) || nextCompletedAt > todaySaratov())) {
+      return Response.json({ error: "Укажите корректную дату фактического исполнения — сегодняшнюю или прошедшую" }, { status: 400 });
+    }
     const id = `GI-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
     const created = new Date().toISOString().slice(0, 10);
     const history: HistoryEvent[] = [{ date: nowRu(), title: "Поручение создано", text: `Назначен ${payload.owner.trim()}.` }];
@@ -107,12 +122,14 @@ export async function POST(request: Request) {
       description: payload.description?.trim() ?? "",
       owner: payload.owner.trim(),
       ownerEmail: payload.ownerEmail?.trim() ?? "",
-      status: payload.status ?? "В работе",
+      status: nextStatus,
       priority: payload.priority ?? "Средний",
       due: payload.due,
       created,
       author: payload.author?.trim() || "Главный инженер",
       project: payload.project?.trim() || "Без объекта",
+      karmaExcluded: payload.karmaExcluded ?? false,
+      completedAt: nextCompletedAt,
       historyJson: JSON.stringify(history),
     }).returning();
     const task = serialize(row);
@@ -127,20 +144,34 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const payload = await request.json() as Record<string, string>;
-    if (!payload.id) return Response.json({ error: "Не указан ID" }, { status: 400 });
-    const [existing] = await getDb().select().from(tasks).where(eq(tasks.id, payload.id)).limit(1);
+    const payload = await request.json() as Record<string, unknown>;
+    const id = typeof payload.id === "string" ? payload.id : "";
+    if (!id) return Response.json({ error: "Не указан ID" }, { status: 400 });
+    const [existing] = await getDb().select().from(tasks).where(eq(tasks.id, id)).limit(1);
     if (!existing) return Response.json({ error: "Поручение не найдено" }, { status: 404 });
 
-    const nextStatus = payload.status ?? existing.status;
+    const nextStatus = stringValue(payload.status) ?? existing.status;
+    const nextDue = stringValue(payload.due) ?? existing.due;
+    const requestedCompletedAt = stringValue(payload.completedAt);
+    const nextCompletedAt = nextStatus === "Выполнено" ? (requestedCompletedAt ?? existing.completedAt) : "";
+    if (nextStatus === "Выполнено" && (!validCompletionDate(nextCompletedAt) || nextCompletedAt > todaySaratov())) {
+      return Response.json({ error: "Укажите корректную дату фактического исполнения — сегодняшнюю или прошедшую" }, { status: 400 });
+    }
+    const nextKarmaExcluded = typeof payload.karmaExcluded === "boolean" ? payload.karmaExcluded : existing.karmaExcluded;
     const history = parseHistory(existing.historyJson);
     const changes: string[] = [];
-    if (payload.status && payload.status !== existing.status) changes.push(`Статус: ${existing.status} → ${payload.status}`);
-    if (payload.due && payload.due !== existing.due) {
+    if (nextStatus !== existing.status) changes.push(`Статус: ${existing.status} → ${nextStatus}`);
+    if (nextDue !== existing.due) {
       const previousDue = existing.due.split("-").reverse().join(".");
-      const nextDue = payload.due.split("-").reverse().join(".");
-      changes.push(`Срок перенесён с ${previousDue} на ${nextDue}`);
+      const formattedNextDue = nextDue.split("-").reverse().join(".");
+      changes.push(`Срок перенесён с ${previousDue} на ${formattedNextDue}`);
     }
+    if (nextCompletedAt !== existing.completedAt) {
+      changes.push(nextCompletedAt
+        ? `Фактическая дата исполнения: ${nextCompletedAt.split("-").reverse().join(".")}`
+        : "Фактическая дата исполнения очищена");
+    }
+    if (nextKarmaExcluded !== existing.karmaExcluded) changes.push(nextKarmaExcluded ? "Исключено из расчёта кармы" : "Возвращено в расчёт кармы");
     history.unshift({
       date: nowRu(),
       title: nextStatus === "Выполнено" ? "Выполнение подтверждено" : nextStatus === "Снято" ? "Поручение снято" : "Карточка обновлена",
@@ -148,18 +179,20 @@ export async function PATCH(request: Request) {
     });
 
     const [row] = await getDb().update(tasks).set({
-      title: payload.title?.trim() ?? existing.title,
-      description: payload.description?.trim() ?? existing.description,
-      owner: payload.owner?.trim() ?? existing.owner,
-      ownerEmail: payload.ownerEmail?.trim() ?? existing.ownerEmail,
+      title: trimmedValue(payload.title) ?? existing.title,
+      description: trimmedValue(payload.description) ?? existing.description,
+      owner: trimmedValue(payload.owner) ?? existing.owner,
+      ownerEmail: trimmedValue(payload.ownerEmail) ?? existing.ownerEmail,
       status: nextStatus,
-      priority: payload.priority ?? existing.priority,
-      due: payload.due ?? existing.due,
-      author: payload.author?.trim() ?? existing.author,
-      project: payload.project?.trim() ?? existing.project,
+      priority: stringValue(payload.priority) ?? existing.priority,
+      due: nextDue,
+      author: trimmedValue(payload.author) ?? existing.author,
+      project: trimmedValue(payload.project) ?? existing.project,
+      karmaExcluded: nextKarmaExcluded,
+      completedAt: nextCompletedAt,
       historyJson: JSON.stringify(history),
       updatedAt: new Date().toISOString(),
-    }).where(eq(tasks.id, payload.id)).returning();
+    }).where(eq(tasks.id, id)).returning();
     const task = serialize(row);
     await enqueueGoogleSync({ action: "upsert", task });
     scheduleGoogleSheetsSync();
@@ -168,6 +201,14 @@ export async function PATCH(request: Request) {
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Не удалось обновить поручение" }, { status: 500 });
   }
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" ? value : undefined;
+}
+
+function trimmedValue(value: unknown) {
+  return typeof value === "string" ? value.trim() : undefined;
 }
 
 export async function DELETE(request: Request) {

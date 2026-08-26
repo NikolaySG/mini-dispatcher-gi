@@ -13,6 +13,8 @@ export const tasks = sqliteTable("tasks", {
   created: text("created").notNull(),
   author: text("author").notNull().default("Главный инженер"),
   project: text("project").notNull().default("Без объекта"),
+  karmaExcluded: integer("karma_excluded", { mode: "boolean" }).notNull().default(false),
+  completedAt: text("completed_at").notNull().default(""),
   historyJson: text("history_json").notNull().default("[]"),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });

@@ -5,7 +5,9 @@ import { CommandCore } from "./components/command-core";
 import { DeadlineIndicator, getDeadlineState } from "./components/deadline-indicator";
 import { OperationsPanels } from "./components/operations-panels";
 import { MeetingMode } from "./components/meeting-mode";
-import { createTaskMailto, createTasksMailto, downloadTasksCsv, getTaskRecipients } from "./services/task-exchange";
+import { KarmaDashboard } from "./components/karma-dashboard";
+import { AnalogCalendarClock } from "./components/analog-calendar-clock";
+import { createTaskMailto, createTasksMailto, downloadTasksCsv, downloadTasksXlsx } from "./services/task-exchange";
 import { formatStoredDate, getDeadlineTransfers } from "./services/deadline-history";
 
 type Status = "Выполнено" | "В работе" | "Просрочено" | "На проверке" | "Требует уточнения" | "Снято";
@@ -14,7 +16,7 @@ type HistoryEvent = { date: string; title: string; text: string };
 type Task = {
   id: string; title: string; description: string; owner: string; ownerEmail: string;
   status: Status; priority: Priority; due: string; created: string; author: string;
-  project: string; history: HistoryEvent[];
+  project: string; karmaExcluded: boolean; completedAt: string; history: HistoryEvent[];
 };
 type TaskDraft = Omit<Task, "id" | "created" | "history">;
 type Responsible = { id: string; name: string; position: string; email: string; phone: string; updatedAt?: string };
@@ -33,12 +35,20 @@ const statusClass: Record<Status, string> = {
 };
 const emptyDraft: TaskDraft = {
   title: "", description: "", owner: "", ownerEmail: "", status: "В работе",
-  priority: "Средний", due: new Date().toISOString().slice(0, 10), author: "Главный инженер", project: "",
+  priority: "Средний", due: todaySaratov(), author: "Главный инженер", project: "", karmaExcluded: false, completedAt: "",
 };
 const emptyResponsibleDraft: ResponsibleDraft = { name: "", position: "", email: "", phone: "" };
 
 const formatDate = (date: string) =>
   date ? new Intl.DateTimeFormat("ru-RU").format(new Date(`${date}T12:00:00`)) : "Не определён";
+
+function todaySaratov() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Saratov", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
 
 export default function Home() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -48,12 +58,12 @@ export default function Home() {
   const [priority, setPriority] = useState("Все");
   const [due, setDue] = useState("Все");
   const [query, setQuery] = useState("");
+  const [hideCompleted, setHideCompleted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [modal, setModal] = useState<"create" | "edit" | null>(null);
   const [draft, setDraft] = useState<TaskDraft>(emptyDraft);
   const [toast, setToast] = useState("");
-  const [clock, setClock] = useState<Date | null>(null);
   const [runtimeNow, setRuntimeNow] = useState(0);
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [connectionState, setConnectionState] = useState<"loading" | "online" | "error">("loading");
@@ -62,16 +72,28 @@ export default function Home() {
   const [adminMode, setAdminMode] = useState(true);
   const [meetingMode, setMeetingMode] = useState(false);
   const [highlightedId, setHighlightedId] = useState("");
-  const [view, setView] = useState<"tasks" | "responsibles">("tasks");
+  const [view, setView] = useState<"tasks" | "responsibles" | "karma">("tasks");
   const [responsibles, setResponsibles] = useState<Responsible[]>([]);
   const [responsibleModal, setResponsibleModal] = useState<"create" | "edit" | null>(null);
   const [responsibleDraft, setResponsibleDraft] = useState<ResponsibleDraft>(emptyResponsibleDraft);
   const [selectedResponsibleId, setSelectedResponsibleId] = useState("");
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
+  const [completionModal, setCompletionModal] = useState(false);
+  const [completionDate, setCompletionDate] = useState("");
 
   const notify = (message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(""), 2800);
+  };
+
+  const prepareMailing = (mailTasks: Task[]) => {
+    if (!mailTasks.length) return;
+    const fileName = downloadTasksXlsx(mailTasks);
+    const draft = mailTasks.length === 1
+      ? createTaskMailto(mailTasks[0], fileName)
+      : createTasksMailto(mailTasks, fileName);
+    notify(`Excel-файл «${fileName}» скачан. Прикрепите его к открытому черновику письма.`);
+    window.setTimeout(() => window.location.assign(draft), 180);
   };
 
   const highlightTask = (id: string) => {
@@ -103,13 +125,12 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const updateClock = () => {
+    const updateRuntimeNow = () => {
       const now = new Date();
-      setClock(now);
       setRuntimeNow(now.getTime());
     };
-    const initial = window.setTimeout(updateClock, 0);
-    const timer = window.setInterval(updateClock, 30000);
+    const initial = window.setTimeout(updateRuntimeNow, 0);
+    const timer = window.setInterval(updateRuntimeNow, 30000);
     return () => { window.clearTimeout(initial); window.clearInterval(timer); };
   }, []);
 
@@ -155,10 +176,12 @@ export default function Home() {
       && (status === "Все" || task.status === status)
       && (priority === "Все" || task.priority === priority)
       && dueMatch
+      && (!hideCompleted || task.status !== "Выполнено")
       && (!q || `${task.id} ${task.title} ${task.description} ${task.project}`.toLowerCase().includes(q));
-  }), [tasks, owner, status, priority, due, query, runtimeNow]);
+  }), [tasks, owner, status, priority, due, query, hideCompleted, runtimeNow]);
   const selectedTasks = tasks.filter((task) => selectedTaskIds.has(task.id));
-  const selectedRecipients = getTaskRecipients(selectedTasks);
+  const selectedRecipients = [...new Set(selectedTasks.flatMap((task) => task.ownerEmail
+    .split(/[;,]/).map((item) => item.trim()).filter(Boolean)))];
   const allFilteredSelected = filtered.length > 0 && filtered.every((task) => selectedTaskIds.has(task.id));
 
   const toggleTaskSelection = (id: string) => {
@@ -176,6 +199,14 @@ export default function Home() {
       else filtered.forEach((task) => next.add(task.id));
       return next;
     });
+  };
+
+  const toggleCompletedVisibility = () => {
+    const next = !hideCompleted;
+    setHideCompleted(next);
+    if (next && selected?.status === "Выполнено") {
+      setSelectedId(filtered.find((task) => task.status !== "Выполнено")?.id ?? "");
+    }
   };
 
   const statusCounts = statuses.map((label) => ({
@@ -237,7 +268,7 @@ export default function Home() {
   ] as const;
 
   const openCreate = () => {
-    setDraft({ ...emptyDraft, due: new Date().toISOString().slice(0, 10) });
+    setDraft({ ...emptyDraft, due: todaySaratov() });
     setModal("create");
   };
 
@@ -253,8 +284,16 @@ export default function Home() {
       due: selected.due,
       author: selected.author,
       project: selected.project,
+      karmaExcluded: selected.karmaExcluded,
+      completedAt: selected.completedAt ?? "",
     });
     setModal("edit");
+  };
+
+  const openCompletion = () => {
+    if (!selected) return;
+    setCompletionDate(selected.completedAt || todaySaratov());
+    setCompletionModal(true);
   };
 
   const openResponsibleCreate = () => {
@@ -326,8 +365,11 @@ export default function Home() {
     event.preventDefault();
     setBusy(true);
     try {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todaySaratov();
       const normalized = { ...draft };
+      if (normalized.status === "Выполнено" && !normalized.completedAt) throw new Error("Укажите дату фактического исполнения");
+      if (normalized.status === "Выполнено" && normalized.completedAt > today) throw new Error("Дата исполнения не может быть будущей");
+      if (normalized.status !== "Выполнено") normalized.completedAt = "";
       if (normalized.due < today && normalized.status === "В работе") normalized.status = "Просрочено";
       if (normalized.due >= today && normalized.status === "Просрочено") normalized.status = "В работе";
       const response = await fetch("/api/tasks", {
@@ -356,13 +398,13 @@ export default function Home() {
     }
   };
 
-  const quickStatus = async (nextStatus: Status) => {
-    if (!selected) return;
+  const quickStatus = async (nextStatus: Status, completedAt = "") => {
+    if (!selected) return false;
     setBusy(true);
     try {
       const response = await fetch("/api/tasks", {
         method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: selected.id, status: nextStatus }),
+        body: JSON.stringify({ id: selected.id, status: nextStatus, completedAt }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error);
@@ -374,8 +416,38 @@ export default function Home() {
       notify(sync.state === "pending" ? "Статус сохранён · Google Sheets синхронизируется" : sync.state === "online"
         ? nextStatus === "Выполнено" ? "Поручение выполнено · Google Sheets обновлён" : nextStatus === "Снято" ? "Поручение снято · Google Sheets обновлён" : "Статус обновлён в Google Sheets"
         : "Статус сохранён в базе · Google Sheets временно недоступен");
+      return true;
     } catch (error) {
       notify(error instanceof Error ? error.message : "Не удалось изменить статус");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const completeTask = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!completionDate) return notify("Укажите дату фактического исполнения");
+    if (completionDate > todaySaratov()) return notify("Дата исполнения не может быть будущей");
+    if (await quickStatus("Выполнено", completionDate)) setCompletionModal(false);
+  };
+
+  const toggleKarma = async () => {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      const response = await fetch("/api/tasks", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: selected.id, karmaExcluded: !selected.karmaExcluded }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error);
+      setTasks((current) => current.map((task) => task.id === selected.id ? payload.task : task));
+      setLastSync(new Date());
+      setGoogleSync(normalizeGoogleSync(payload.googleSync));
+      notify(payload.task.karmaExcluded ? "Поручение исключено из расчёта кармы" : "Поручение возвращено в расчёт кармы");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Не удалось изменить расчёт кармы");
     } finally {
       setBusy(false);
     }
@@ -421,7 +493,7 @@ export default function Home() {
 
       <section className="system-status-bar" aria-label="Состояние диспетчерской" data-connection={connectionState}>
         <div className={`system-status ${connectionState}`}><i /><span>Система</span><strong>{connectionState === "online" ? "Работает" : connectionState === "loading" ? "Подключение" : "Ошибка связи"}</strong></div>
-        <div><span>Дата и время</span><strong>{clock ? formatSystemTime(clock) : "Синхронизация часов"}</strong></div>
+        <AnalogCalendarClock />
         <div><span>Последняя синхронизация</span><strong>{lastSync ? formatSystemTime(lastSync) : "Ожидание данных"}</strong></div>
         <div><span>Источник</span><strong>{connectionState === "online" ? googleSync.state === "online" ? "D1 + Google Sheets" : googleSync.state === "pending" ? `D1 · Sheets: ${googleSync.pending} в очереди` : "D1 · Sheets недоступен" : "D1 · проверка"}</strong></div>
         <button className={`sync-button ${googleSync.state}`} disabled={syncBusy} onClick={syncNow} title={googleSync.lastError ?? "Принудительная полная синхронизация с Google Sheets"}><i />{syncBusy ? "Синхронизация…" : googleSync.state === "pending" ? `Синхронизировать (${googleSync.pending})` : "Синхронизировать"}</button>
@@ -434,6 +506,7 @@ export default function Home() {
       <nav className="workspace-tabs" aria-label="Разделы диспетчерской">
         <button className={view === "tasks" ? "active" : ""} onClick={() => setView("tasks")}><span>01</span>Поручения</button>
         <button className={view === "responsibles" ? "active" : ""} onClick={() => setView("responsibles")}><span>02</span>Справочник ответственных <b>{responsibles.length}</b></button>
+        <button className={view === "karma" ? "active karma-tab" : "karma-tab"} onClick={() => setView("karma")}><span>03</span>Карма <b>{tasks.filter((task) => !task.karmaExcluded && task.status !== "Снято").length}</b></button>
       </nav>
 
       {view === "tasks" ? <>
@@ -475,13 +548,14 @@ export default function Home() {
           <button className="clear-filters" onClick={() => { setOwner("Все"); setStatus("Все"); setPriority("Все"); setDue("Все"); setQuery(""); }}>Сброс</button>
         </div>
         <div className="selection-toolbar" aria-label="Работа с выборкой поручений">
+          <button className={hideCompleted ? "hide-completed active" : "hide-completed"} aria-pressed={hideCompleted} onClick={toggleCompletedVisibility}>
+            {hideCompleted ? "Показать выполненные" : "Скрыть выполненные"}
+          </button>
           <button className="selection-toggle" onClick={toggleFilteredSelection} disabled={!filtered.length}>
             {allFilteredSelected ? "Снять выбор с показанных" : "Выбрать все показанные"}
           </button>
           <span><strong>{selectedTasks.length}</strong> выбрано · <strong>{selectedRecipients.length}</strong> адресатов</span>
-          {selectedTasks.length > 0 && selectedRecipients.length > 0
-            ? <a href={createTasksMailto(selectedTasks)}>✉ Подготовить письмо участникам</a>
-            : <button className="selection-mail-disabled" disabled title={selectedTasks.length ? "У выбранных поручений не заполнены адреса электронной почты" : "Сначала выберите поручения"}>✉ Подготовить письмо участникам</button>}
+          <button className={selectedTasks.length && selectedRecipients.length ? "selection-mail" : "selection-mail-disabled"} disabled={!selectedTasks.length || !selectedRecipients.length} title="Скачать Excel-файл и открыть короткий черновик письма" onClick={() => prepareMailing(selectedTasks)}>↗ Excel + черновик письма</button>
           {selectedTasks.length > 0 && <button className="selection-clear" onClick={() => setSelectedTaskIds(new Set())}>Очистить выборку</button>}
         </div>
 
@@ -516,7 +590,7 @@ export default function Home() {
                 </div>
                 <div className="inspector-actions">
                   <button className="action primary-action" disabled={!adminMode} onClick={openEdit}>✎ Изменить</button>
-                  <button className="action success-action" disabled={!adminMode || busy || selected.status === "Выполнено"} onClick={() => quickStatus("Выполнено")}>✓ Выполнено</button>
+                  <button className="action success-action" disabled={!adminMode || busy || selected.status === "Выполнено"} onClick={openCompletion}>✓ Выполнено</button>
                   <button className="action remove-action" disabled={!adminMode || busy || selected.status === "Снято"} onClick={() => quickStatus("Снято")}>⊘ Снять</button>
                   <button className="action delete-action" disabled={!adminMode || busy} onClick={deleteTask}>⌫ Удалить</button>
                 </div>
@@ -530,12 +604,17 @@ export default function Home() {
                   <div><span>Объект</span><strong>{selected.project}</strong></div>
                   <div><span>Постановщик</span><strong>{selected.author}</strong></div>
                   <div><span>Создано</span><strong>{formatDate(selected.created)}</strong></div>
+                  {selected.status === "Выполнено" && <div><span>Исполнено фактически</span><strong>{formatDate(selected.completedAt)}</strong></div>}
                 </div>
+                <label className={selected.karmaExcluded ? "karma-toggle excluded" : "karma-toggle"}>
+                  <input type="checkbox" checked={selected.karmaExcluded} disabled={!adminMode || busy} onChange={toggleKarma} />
+                  <span><i /><strong>Не учитывать в карме</strong><small>{selected.karmaExcluded ? "Поручение исключено из рейтинга исполнителей" : "Поручение влияет на рейтинг исполнителей"}</small></span>
+                </label>
                 <details className="deadline-history-detail inspector-section" open>
                   <summary className="history-title"><span>ИСТОРИЯ СРОКА</span><b>{getDeadlineTransfers(selected.history).length}</b></summary>
                   <DeadlineHistory task={selected} detailed />
                 </details>
-                <a className="mail-link" href={createTaskMailto(selected)}>↗ Сформировать письмо исполнителю</a>
+                <button className="mail-link" title="Скачать Excel-файл и открыть короткий черновик письма" onClick={() => prepareMailing([selected])}>↗ Excel + письмо исполнителю</button>
                 <details className="history-block inspector-section">
                   <summary className="history-title"><span>ИСТОРИЯ</span><b>{selected.history.length}</b></summary>
                   {selected.history.map((event, index) => (
@@ -564,18 +643,19 @@ export default function Home() {
 
       <OperationsPanels tasks={activeTasks} onSelect={setSelectedId} />
 
-      </> : <ResponsibleDirectory
+      </> : view === "responsibles" ? <ResponsibleDirectory
         responsibles={responsibles}
         tasks={tasks}
         adminMode={adminMode}
         onCreate={openResponsibleCreate}
         onEdit={openResponsibleEdit}
         onDelete={deleteResponsible}
-      />}
+      /> : <KarmaDashboard tasks={tasks} now={runtimeNow} identities={responsibles} />}
 
       <footer><span>MINI DISPATCHER / GI</span><span>Данные хранятся в D1 и синхронизируются с Google Sheets автоматически</span></footer>
       {toast && <div className="toast" role="status" aria-live="polite"><i />{toast}</div>}
       {modal && <TaskModal mode={modal} draft={draft} setDraft={setDraft} responsibles={responsibles} onClose={() => setModal(null)} onSubmit={saveTask} busy={busy} />}
+      {completionModal && selected && <CompletionModal task={selected} date={completionDate} setDate={setCompletionDate} onClose={() => setCompletionModal(false)} onSubmit={completeTask} busy={busy} />}
       {responsibleModal && <ResponsibleModal mode={responsibleModal} draft={responsibleDraft} setDraft={setResponsibleDraft} onClose={() => setResponsibleModal(null)} onSubmit={saveResponsible} busy={busy} />}
     </main>
   );
@@ -643,8 +723,10 @@ function TaskModal({ mode, draft, setDraft, responsibles, onClose, onSubmit, bus
           </div>
           <label><span>Срок *</span><input required type="date" value={draft.due} onChange={(e) => field("due", e.target.value)} /></label>
           <label><span>Статус</span><select value={draft.status} onChange={(e) => field("status", e.target.value as Status)}>{statuses.map((item) => <option key={item}>{item}</option>)}</select></label>
+          {draft.status === "Выполнено" && <label className="completion-date-field"><span>Дата фактического исполнения *</span><input required type="date" max={todaySaratov()} value={draft.completedAt} onInput={(e) => field("completedAt", e.currentTarget.value)} /><small>Можно указать сегодняшнюю или прошедшую дату. Она используется в расчёте кармы.</small></label>}
           <label><span>Приоритет</span><select value={draft.priority} onChange={(e) => field("priority", e.target.value as Priority)}>{priorities.map((item) => <option key={item}>{item}</option>)}</select></label>
           <label><span>Объект / проект</span><input value={draft.project} onChange={(e) => field("project", e.target.value)} placeholder="Объект 1" /></label>
+          <label className="wide karma-modal-toggle"><input type="checkbox" checked={draft.karmaExcluded} onChange={(event) => field("karmaExcluded", event.target.checked)} /><span><strong>Не учитывать поручение в карме</strong><small>Исключает поручение из расчёта для всех назначенных исполнителей</small></span></label>
           <label className="wide"><span>Постановщик</span><input value={draft.author} onChange={(e) => field("author", e.target.value)} /></label>
           <label className="wide"><span>Описание</span><textarea value={draft.description} onChange={(e) => field("description", e.target.value)} placeholder="Условия, ожидаемый результат, необходимые материалы" /></label>
         </div>
@@ -652,6 +734,23 @@ function TaskModal({ mode, draft, setDraft, responsibles, onClose, onSubmit, bus
       </form>
     </div>
   );
+}
+
+function CompletionModal({ task, date, setDate, onClose, onSubmit, busy }: {
+  task: Task; date: string; setDate: (value: string) => void;
+  onClose: () => void; onSubmit: (event: FormEvent) => void; busy: boolean;
+}) {
+  return <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="completion-modal-title" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    <form className="task-modal completion-modal" onSubmit={onSubmit}>
+      <div className="modal-head"><div><p className="kicker">ПОДТВЕРЖДЕНИЕ ВЫПОЛНЕНИЯ</p><h2 id="completion-modal-title">Дата исполнения</h2></div><button type="button" aria-label="Закрыть окно" onClick={onClose}>×</button></div>
+      <div className="completion-modal-body">
+        <p><strong>{task.id}</strong> · {task.title}</p>
+        <label><span>Фактическая дата исполнения *</span><input required autoFocus type="date" max={todaySaratov()} value={date} onInput={(event) => setDate(event.currentTarget.value)} /></label>
+        <small>Дата может быть сегодняшней или прошедшей. Карма будет рассчитана относительно планового срока {formatDate(task.due)}.</small>
+      </div>
+      <div className="modal-actions"><button type="button" className="cancel-button" onClick={onClose}>Отмена</button><button disabled={busy || !date} className="save-button">{busy ? "Сохраняем…" : "Подтвердить выполнение"}</button></div>
+    </form>
+  </div>;
 }
 
 function ResponsibleDirectory({ responsibles, tasks, adminMode, onCreate, onEdit, onDelete }: {

@@ -1,5 +1,3 @@
-import type { CSSProperties } from "react";
-
 type CommandCoreProps = {
   attentionCount: number;
   attentionShare: number;
@@ -17,20 +15,16 @@ export function CommandCore({ attentionCount, attentionShare, criticalCount, nea
   const code = attentionCount === 0 ? "NORMAL" : attentionShare <= 25 ? "STABLE" : attentionShare <= 50 ? "MONITOR" : "ALERT";
 
   return <>
-    <div className="completion-core" aria-label={`Ядро диспетчерской: ${attentionCount} поручений требуют решения. ${state}`}>
-      <div className="core-ring" style={{ "--progress": `${attentionShare * 3.6}deg`, "--core-tone": tone } as CSSProperties}>
-        <span className="core-orbit orbit-one" aria-hidden="true" />
-        <span className="core-orbit orbit-two" aria-hidden="true" />
-        <i className="core-node node-a" aria-hidden="true" /><i className="core-node node-b" aria-hidden="true" />
-        <div><strong>{attentionCount}</strong><span>требуют решения</span></div>
-      </div>
-      <p className="core-state-label">{state}</p>
-      <div className="core-caption"><i style={{ background: tone, boxShadow: `0 0 10px ${tone}` }} /><span>Контур внимания</span><b style={{ color: tone }}>{code}</b></div>
+    <div className="attention-card" aria-label={`${attentionCount} поручений требуют решения. ${state}`}>
+      <div className="attention-head"><span>КОНТУР ВНИМАНИЯ</span><b style={{ color: tone }}>{code}</b></div>
+      <strong className="attention-value">{attentionCount}</strong>
+      <span className="attention-label">требуют решения</span>
+      <div className="attention-track"><i style={{ width: `${attentionShare}%`, background: tone }} /></div>
+      <p>{state}</p>
     </div>
-    <div className="risk-radar" aria-label="Критические сроки">
-      <div className="radar-grid" aria-hidden="true"><span className="radar-sweep" /><i className="blip b1" /><i className="blip b2" /><i className="blip b3" /></div>
+    <div className="risk-summary" aria-label="Критические сроки">
+      <div className="risk-summary-head"><span>КРИТИЧЕСКИЙ КОНТУР</span><b>LIVE</b></div>
       <div className="risk-readout">
-        <span>КРИТИЧЕСКИЙ КОНТУР</span>
         <div><strong>{criticalCount}</strong><small>критический приоритет</small></div>
         <div><strong>{nearDueCount}</strong><small>срок до 7 дней</small></div>
       </div>

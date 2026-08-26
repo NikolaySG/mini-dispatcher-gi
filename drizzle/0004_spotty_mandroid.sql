@@ -1,0 +1,1 @@
+ALTER TABLE `tasks` ADD `karma_excluded` integer DEFAULT false NOT NULL;
